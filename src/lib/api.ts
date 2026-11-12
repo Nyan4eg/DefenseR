@@ -124,7 +124,21 @@ export interface ResponsesState {
 export interface AppSettings {
   notifications: boolean;
   watchDownloads: boolean;
+  autoUpdate: boolean;
   /** Development build: start with Windows is unavailable. */
+  devBuild: boolean;
+}
+
+export interface UpdateStatus {
+  current: string;
+  /** The newer version found by the last check. */
+  available: string | null;
+  notes: string | null;
+  /** Unix seconds of the last check that got an answer. */
+  checkedAt: number | null;
+  checking: boolean;
+  installing: boolean;
+  error: string | null;
   devBuild: boolean;
 }
 

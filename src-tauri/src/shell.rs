@@ -28,6 +28,9 @@ pub struct Settings {
     /// Check programs that appear in the Downloads folder.
     #[serde(default = "enabled")]
     pub watch_downloads: bool,
+    /// Install new versions on their own while the window is hidden.
+    #[serde(default = "enabled")]
+    pub auto_update: bool,
     /// The "still running in the tray" hint has been shown once.
     #[serde(default)]
     pub tray_hint_shown: bool,
@@ -35,7 +38,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { notifications: true, watch_downloads: true, tray_hint_shown: false }
+        Self { notifications: true, watch_downloads: true, auto_update: true, tray_hint_shown: false }
     }
 }
 
@@ -67,7 +70,7 @@ pub fn show_main_window(app: &AppHandle) {
     }
 }
 
-fn notify(app: &AppHandle, title: &str, body: &str) {
+pub fn notify(app: &AppHandle, title: &str, body: &str) {
     if let Err(error) = app.notification().builder().title(title).body(body).show() {
         eprintln!("failed to show a notification: {error}");
     }

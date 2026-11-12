@@ -220,7 +220,13 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       return respond(command === "enable_autostart" ? "autostart-enable" : "autostart-forget", `${item?.source}\\${item?.name}`);
     }
     case "get_settings":
-      return { notifications: true, watchDownloads: true, devBuild: false };
+      return { notifications: true, watchDownloads: true, autoUpdate: true, devBuild: false };
+    case "get_update_status":
+    case "check_update":
+      return { current: "0.1.1", available: "0.2.0", notes: "Проверка файлов по VirusTotal.", checkedAt: Math.floor(Date.now() / 1000) - 600, checking: false, installing: false, error: null, devBuild: false };
+    case "install_update":
+      throw "В демо-режиме обновление не устанавливается.";
+    case "set_auto_update":
     case "get_downloads_status":
       return {
         folder: "C:\Users\demo\Downloads",

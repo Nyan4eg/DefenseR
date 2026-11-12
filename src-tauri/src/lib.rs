@@ -9,6 +9,7 @@ mod rules;
 pub mod scanner;
 mod shell;
 mod startup;
+mod update;
 
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -30,6 +31,7 @@ pub(crate) struct AppState {
     responses: Mutex<responses::Store>,
     pub settings: Mutex<shell::SettingsStore>,
     pub downloads: Mutex<downloads::Watcher>,
+    pub updates: Mutex<update::Status>,
 }
 
 impl AppState {
@@ -297,6 +299,7 @@ fn forget_autostart(state: State<'_, AppState>, id: String) -> Result<(), String
 struct SettingsView {
     notifications: bool,
     watch_downloads: bool,
+    auto_update: bool,
     /// A development build: its autostart entry would point at a build that needs the dev server.
     dev_build: bool,
 }
@@ -304,7 +307,7 @@ struct SettingsView {
 #[tauri::command(async)]
 fn get_settings(state: State<'_, AppState>) -> SettingsView {
     let settings = lock(&state.settings).settings.clone();
-    SettingsView { notifications: settings.notifications, watch_downloads: settings.watch_downloads, dev_build: cfg!(debug_assertions) }
+    SettingsView { notifications: settings.notifications, watch_downloads: settings.watch_downloads, auto_update: settings.auto_update, dev_build: cfg!(debug_assertions) }
 }
 
 #[tauri::command(async)]
@@ -326,6 +329,31 @@ fn get_downloads_status(state: State<'_, AppState>) -> downloads::Status {
     lock(&state.downloads).status()
 }
 
+#[tauri::command(async)]
+fn set_auto_update(state: State<'_, AppState>, enabled: bool) {
+    let mut store = lock(&state.settings);
+    store.settings.auto_update = enabled;
+    store.save();
+}
+
+#[tauri::command(async)]
+fn get_update_status(app: AppHandle) -> update::Status {
+    update::status(&app)
+}
+
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Result<update::Status, String> {
+    update::check(&app).await?;
+    Ok(update::status(&app))
+}
+
+/// Installs the newest version. The interface calls it when the user asks for the update.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    let update = update::check(&app).await?.ok_or("Установлена последняя версия.")?;
+    update::install(&app, update).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -338,6 +366,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -355,6 +384,7 @@ pub fn run() {
                     app.path().download_dir().ok(),
                     monitor::now_secs(),
                 )),
+                updates: Mutex::new(update::Status::default()),
             });
 
             shell::setup_tray(app)?;
@@ -367,6 +397,8 @@ pub fn run() {
 
             let handle = app.handle().clone();
             std::thread::spawn(move || monitor::run(handle));
+            let handle = app.handle().clone();
+            std::thread::spawn(move || update::run(handle));
             Ok(())
         })
         // Closing the window keeps the monitoring running; quitting is done from the tray.
@@ -405,7 +437,11 @@ pub fn run() {
             get_settings,
             set_notifications,
             set_watch_downloads,
-            get_downloads_status
+            get_downloads_status,
+            set_auto_update,
+            get_update_status,
+            check_update,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
