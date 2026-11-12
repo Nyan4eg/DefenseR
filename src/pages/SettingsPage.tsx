@@ -53,6 +53,16 @@ function BackgroundCard() {
     }
   };
 
+  const changeDownloads = async (enabled: boolean) => {
+    setError(null);
+    try {
+      await call("set_watch_downloads", { enabled });
+      setSettings((prev) => prev && { ...prev, watchDownloads: enabled });
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   return (
     <Card className="mt-4 max-w-2xl p-5">
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -82,6 +92,16 @@ function BackgroundCard() {
           <div className="mt-0.5 text-xs text-white/45">Только средней и высокой важности. Инциденты низкой важности видны в окне.</div>
         </div>
         <Toggle checked={settings?.notifications ?? false} disabled={!settings} onChange={changeNotifications} />
+      </div>
+
+      <div className="mt-4 flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm">Проверять новые файлы в «Загрузках»</div>
+          <div className="mt-0.5 text-xs text-white/45">
+            Программы, которые появляются в папке загрузок, сразу оцениваются моделью и проверяются на подпись. Архивы не распаковываются.
+          </div>
+        </div>
+        <Toggle checked={settings?.watchDownloads ?? false} disabled={!settings} onChange={changeDownloads} />
       </div>
       {error && <div className="mt-3 text-sm text-rose-300">{error}</div>}
     </Card>

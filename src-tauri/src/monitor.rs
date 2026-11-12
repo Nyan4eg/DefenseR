@@ -10,7 +10,7 @@ use crate::incidents::{Evidence, Finding, Severity, Target};
 use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::Verdict;
-use crate::{lock, shell, AppState};
+use crate::{downloads, lock, shell, AppState};
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const PROFILE_SAVE_EVERY: u64 = 6;
@@ -54,19 +54,13 @@ fn scan_running_files(state: &AppState, processes: &[ProcessInfo]) -> Vec<Findin
         if result.verdict != Verdict::Malicious || signature == Some(SignatureStatus::Valid) {
             continue;
         }
-        let signature_text = match signature {
-            Some(SignatureStatus::Invalid) => "не сходится с содержимым файла",
-            Some(SignatureStatus::Untrusted) => "есть, но Windows не доверяет издателю",
-            Some(SignatureStatus::Unsigned) => "нет",
-            _ => "не удалось проверить",
-        };
         let score = format!("{:.1}%", result.score.unwrap_or(0.0) * 100.0);
         let evidence = [
             ("Процесс", process.name.clone()),
             ("PID", process.pid.to_string()),
             ("Путь", result.path.clone()),
             ("Оценка модели", score),
-            ("Цифровая подпись", signature_text.to_string()),
+            ("Цифровая подпись", downloads::signature_text(signature).to_string()),
             ("SHA-256", result.sha256.clone().unwrap_or_default()),
         ];
         findings.push(Finding {
@@ -95,6 +89,12 @@ pub fn run(app: AppHandle) {
         let file_findings = scan_running_files(&state, &processes);
 
         let now = now_secs();
+        let download_findings = if lock(&state.settings).settings.watch_downloads {
+            downloads::check(&state.downloads, &state.scanner, now)
+        } else {
+            lock(&state.downloads).pause(now);
+            Vec::new()
+        };
         let behavior_findings = {
             let connections = network::collect();
             let has_signature = |exe: &str| state.scanner.cached(Path::new(exe)).and_then(|r| r.signature).map(|s| s.status == SignatureStatus::Valid);
@@ -119,6 +119,7 @@ pub fn run(app: AppHandle) {
         let snapshot = Snapshot { processes: &processes, autostart: &autostart, protection: &protection };
         let mut findings = rules::evaluate(&snapshot, store.autostart_baseline());
         findings.extend(file_findings);
+        findings.extend(download_findings);
         findings.extend(behavior_findings);
         let merge = store.merge(findings, now);
         if merge.changed {

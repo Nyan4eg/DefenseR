@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Activity, BrainCircuit, ChevronDown, FileSearch, FolderSearch, LoaderCircle, Upload } from "lucide-react";
+import { Activity, BrainCircuit, ChevronDown, Download, FileSearch, FolderSearch, LoaderCircle, Upload } from "lucide-react";
 import { ResponseActions } from "../components/ResponseActions";
 import { Badge, Card, PageHeader, Tabs } from "../components/ui";
-import { formatBytes, inTauri, type ModelInfo, type ScanProgress, type ScanResult, type Signature, type Verdict } from "../lib/api";
+import { formatBytes, formatTime, inTauri, usePolling, type AppSettings, type DownloadsStatus, type ModelInfo, type ScanProgress, type ScanResult, type Signature, type Verdict } from "../lib/api";
 
 export type ScanRequest = { kind: "processes" } | { kind: "paths"; paths: string[] };
 
@@ -124,6 +124,53 @@ function ResultRow({ result, onChanged }: { result: ScanResult; onChanged: () =>
         </div>
       )}
     </div>
+  );
+}
+
+/** Programs from the Downloads folder that were checked on their own as they appeared. */
+function DownloadsCard() {
+  const status = usePolling<DownloadsStatus>("get_downloads_status", 5000);
+  const settings = usePolling<AppSettings>("get_settings", 15_000);
+  if (!status || !settings) return null;
+
+  const state = !settings.watchDownloads
+    ? "Проверка выключена в настройках"
+    : status.folder
+      ? `Слежу за папкой ${status.folder} · проверено программ: ${status.checked}`
+      : "Windows не сообщила, где находится папка загрузок";
+
+  return (
+    <Card className="mt-6 overflow-hidden">
+      <div className="px-5 py-4">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Download size={16} className="text-emerald-400" />
+          Новые файлы в «Загрузках»
+        </div>
+        <p className="mt-1 break-all text-sm text-white/50">{state}</p>
+      </div>
+      {status.recent.length === 0 ? (
+        <div className="border-t border-white/6 px-5 py-4 text-sm text-white/45">
+          Пока ничего не проверялось. Программа, которая появится в папке, будет оценена через несколько секунд.
+        </div>
+      ) : (
+        status.recent.map((item) => {
+          const verdict = VERDICTS[item.verdict];
+          return (
+            <div key={item.path} className="flex items-center gap-3 border-t border-white/6 px-5 py-2.5">
+              <span className={`size-2 shrink-0 rounded-full ${verdict.dot}`} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm">{item.name}</div>
+                <div className="truncate font-mono text-xs text-white/35">{item.path}</div>
+              </div>
+              {item.signature === "valid" && <Badge tone="accent">Подписан</Badge>}
+              {item.signature === "invalid" && <Badge tone="warn">Подпись нарушена</Badge>}
+              <div className={`shrink-0 text-right text-xs ${verdict.text}`}>{verdict.label}</div>
+              <div className="w-28 shrink-0 text-right text-xs text-white/40">{formatTime(item.at)}</div>
+            </div>
+          );
+        })
+      )}
+    </Card>
   );
 }
 
@@ -252,6 +299,8 @@ export function ScanPage({ scan, model, onScan, onChanged }: Props) {
           )}
         </>
       )}
+
+      <DownloadsCard />
 
       {model && (
         <Card className="mt-6 p-5 text-sm text-white/55">

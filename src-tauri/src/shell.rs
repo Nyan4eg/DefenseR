@@ -25,6 +25,9 @@ pub struct Settings {
     /// Show a Windows notification for new incidents of medium and high severity.
     #[serde(default = "enabled")]
     pub notifications: bool,
+    /// Check programs that appear in the Downloads folder.
+    #[serde(default = "enabled")]
+    pub watch_downloads: bool,
     /// The "still running in the tray" hint has been shown once.
     #[serde(default)]
     pub tray_hint_shown: bool,
@@ -32,7 +35,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { notifications: true, tray_hint_shown: false }
+        Self { notifications: true, watch_downloads: true, tray_hint_shown: false }
     }
 }
 

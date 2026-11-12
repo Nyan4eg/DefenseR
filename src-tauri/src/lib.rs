@@ -1,5 +1,6 @@
 mod ai;
 mod collectors;
+mod downloads;
 mod incidents;
 mod monitor;
 mod profile;
@@ -27,6 +28,7 @@ pub(crate) struct AppState {
     pub profile: Mutex<profile::Profile>,
     responses: Mutex<responses::Store>,
     pub settings: Mutex<shell::SettingsStore>,
+    pub downloads: Mutex<downloads::Watcher>,
 }
 
 impl AppState {
@@ -254,13 +256,15 @@ fn unblock_program(state: State<'_, AppState>, id: String) -> Result<(), String>
 #[serde(rename_all = "camelCase")]
 struct SettingsView {
     notifications: bool,
+    watch_downloads: bool,
     /// A development build: its autostart entry would point at a build that needs the dev server.
     dev_build: bool,
 }
 
 #[tauri::command(async)]
 fn get_settings(state: State<'_, AppState>) -> SettingsView {
-    SettingsView { notifications: lock(&state.settings).settings.notifications, dev_build: cfg!(debug_assertions) }
+    let settings = lock(&state.settings).settings.clone();
+    SettingsView { notifications: settings.notifications, watch_downloads: settings.watch_downloads, dev_build: cfg!(debug_assertions) }
 }
 
 #[tauri::command(async)]
@@ -268,6 +272,18 @@ fn set_notifications(state: State<'_, AppState>, enabled: bool) {
     let mut store = lock(&state.settings);
     store.settings.notifications = enabled;
     store.save();
+}
+
+#[tauri::command(async)]
+fn set_watch_downloads(state: State<'_, AppState>, enabled: bool) {
+    let mut store = lock(&state.settings);
+    store.settings.watch_downloads = enabled;
+    store.save();
+}
+
+#[tauri::command(async)]
+fn get_downloads_status(state: State<'_, AppState>) -> downloads::Status {
+    lock(&state.downloads).status()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -294,6 +310,11 @@ pub fn run() {
                 profile: Mutex::new(profile::Profile::load(data_dir.join("profile.json"))),
                 responses: Mutex::new(responses::Store::load(&data_dir)),
                 settings: Mutex::new(shell::SettingsStore::load(data_dir.join("settings.json"))),
+                downloads: Mutex::new(downloads::Watcher::load(
+                    data_dir.join("downloads.json"),
+                    app.path().download_dir().ok(),
+                    monitor::now_secs(),
+                )),
             });
 
             shell::setup_tray(app)?;
@@ -339,7 +360,9 @@ pub fn run() {
             block_program,
             unblock_program,
             get_settings,
-            set_notifications
+            set_notifications,
+            set_watch_downloads,
+            get_downloads_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

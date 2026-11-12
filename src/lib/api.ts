@@ -110,6 +110,7 @@ export interface ResponsesState {
 
 export interface AppSettings {
   notifications: boolean;
+  watchDownloads: boolean;
   /** Development build: start with Windows is unavailable. */
   devBuild: boolean;
 }
@@ -138,6 +139,23 @@ export interface Signature {
   /** valid: signed, unchanged, trusted signer. invalid: changed after signing. */
   status: "valid" | "invalid" | "untrusted" | "unsigned" | "unknown";
   signer: string | null;
+}
+
+/** A program from the Downloads folder that was checked as soon as it appeared. */
+export interface CheckedDownload {
+  path: string;
+  name: string;
+  verdict: Verdict;
+  signature: Signature["status"] | null;
+  /** Unix seconds. */
+  at: number;
+}
+
+export interface DownloadsStatus {
+  /** Null when Windows did not report a Downloads folder. */
+  folder: string | null;
+  checked: number;
+  recent: CheckedDownload[];
 }
 
 export interface ScanProgress {

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -18,7 +18,7 @@ Get-Content -LiteralPath $env:DEFENSER_LIST -Encoding UTF8 | ForEach-Object { \
 $s = Get-AuthenticodeSignature -LiteralPath $_; \
 if ($s) { '{0}|{1}' -f [int]$s.Status, $s.SignerCertificate.Subject } else { '1|' } }";
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SignatureStatus {
     /// Signed, the file is unchanged since, and Windows trusts the signer.

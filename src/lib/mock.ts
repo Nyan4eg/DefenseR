@@ -204,7 +204,18 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       return respond("unblock", block?.path ?? "");
     }
     case "get_settings":
-      return { notifications: true, devBuild: false };
+      return { notifications: true, watchDownloads: true, devBuild: false };
+    case "get_downloads_status":
+      return {
+        folder: "C:\Users\demo\Downloads",
+        checked: 14,
+        recent: [
+          { path: "C:\Users\demo\Downloads\free-codec-pack.exe", name: "free-codec-pack.exe", verdict: "malicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 240 },
+          { path: "C:\Users\demo\Downloads\VSCodeUserSetup-x64.exe", name: "VSCodeUserSetup-x64.exe", verdict: "clean", signature: "valid", at: Math.floor(Date.now() / 1000) - 5400 },
+          { path: "C:\Users\demo\Downloads\tool\helper.dll", name: "helper.dll", verdict: "suspicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 86400 },
+        ],
+      };
+    case "set_watch_downloads":
     case "set_notifications":
       return null;
     case "get_model_info":

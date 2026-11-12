@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::lock;
@@ -27,7 +27,7 @@ const WORKERS: usize = 4;
 /// Batches up to this size get every program's signature verified.
 const VERIFY_ALL_LIMIT: usize = 300;
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Verdict {
     Clean,
@@ -180,7 +180,7 @@ impl Scanner {
     }
 }
 
-fn starts_with_mz(path: &Path) -> bool {
+pub fn starts_with_mz(path: &Path) -> bool {
     use std::io::Read;
     let mut magic = [0u8; 2];
     std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut magic)).is_ok() && &magic == b"MZ"
