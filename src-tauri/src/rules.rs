@@ -108,6 +108,7 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
 }
 
 fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>>, findings: &mut Vec<Finding>) {
+    let own_exe = std::env::current_exe().ok().map(|exe| exe.to_string_lossy().to_lowercase());
     for entry in entries {
         let subject = format!("{}|{}", entry.source.to_lowercase(), entry.name.to_lowercase());
         let details = evidence(&[("Запись", &entry.name), ("Команда", &entry.command), ("Источник", &entry.source)]);
@@ -136,7 +137,9 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
             });
         }
 
-        if baseline.is_some_and(|known| !known.contains(&autostart_key(entry))) {
+        // DefenseR's own entry, added when the user turns on "start with Windows".
+        let own = own_exe.as_deref().is_some_and(|exe| entry.command.to_lowercase().contains(exe));
+        if !own && baseline.is_some_and(|known| !known.contains(&autostart_key(entry))) {
             findings.push(Finding {
                 id: format!("autostart-new|{}", autostart_key(entry).to_lowercase()),
                 rule: "autostart-new",

@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -30,6 +30,9 @@ keyring = "4.2.0"
 ort = "=2.0.0-rc.15"
 sha2 = "0.11.1"
 tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
 
 
 # Feature extraction loops over every byte of a file; unoptimized it is too slow to use.

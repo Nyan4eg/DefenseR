@@ -84,6 +84,14 @@ struct StoreData {
     autostart_baseline: Option<HashSet<String>>,
 }
 
+/// What one evaluation pass changed.
+pub struct Merge {
+    /// Something worth saving changed.
+    pub changed: bool,
+    /// Incidents seen for the first time.
+    pub new: Vec<Incident>,
+}
+
 pub struct Store {
     path: PathBuf,
     data: StoreData,
@@ -148,10 +156,10 @@ impl Store {
         }
     }
 
-    /// Folds one evaluation pass into the stored incidents. Returns true when something
-    /// worth saving changed.
-    pub fn merge(&mut self, findings: Vec<Finding>, now: u64) -> bool {
+    /// Folds one evaluation pass into the stored incidents.
+    pub fn merge(&mut self, findings: Vec<Finding>, now: u64) -> Merge {
         let mut changed = false;
+        let mut new = Vec::new();
         let seen: HashSet<String> = findings.iter().map(|f| f.id.clone()).collect();
 
         for finding in findings {
@@ -169,7 +177,7 @@ impl Store {
                     }
                 }
                 None => {
-                    self.data.incidents.push(Incident {
+                    let incident = Incident {
                         id: finding.id,
                         rule: finding.rule.to_string(),
                         severity: finding.severity,
@@ -181,7 +189,9 @@ impl Store {
                         status: Status::Active,
                         explanation: None,
                         target: finding.target,
-                    });
+                    };
+                    new.push(incident.clone());
+                    self.data.incidents.push(incident);
                     changed = true;
                 }
             }
@@ -198,6 +208,6 @@ impl Store {
         self.data
             .incidents
             .retain(|i| i.status != Status::Resolved || now.saturating_sub(i.last_seen) < HISTORY_SECS);
-        changed || self.data.incidents.len() != before
+        Merge { changed: changed || self.data.incidents.len() != before, new }
     }
 }

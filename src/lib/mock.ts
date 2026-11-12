@@ -203,6 +203,10 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       responses.blocks = responses.blocks.filter((b) => b.id !== args?.id);
       return respond("unblock", block?.path ?? "");
     }
+    case "get_settings":
+      return { notifications: true, devBuild: false };
+    case "set_notifications":
+      return null;
     case "get_model_info":
       return modelInfo;
     case "scan_paths":

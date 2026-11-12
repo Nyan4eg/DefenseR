@@ -6,6 +6,7 @@ mod profile;
 mod responses;
 mod rules;
 pub mod scanner;
+mod shell;
 
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -25,6 +26,7 @@ pub(crate) struct AppState {
     pub scanner: scanner::Scanner,
     pub profile: Mutex<profile::Profile>,
     responses: Mutex<responses::Store>,
+    pub settings: Mutex<shell::SettingsStore>,
 }
 
 impl AppState {
@@ -248,9 +250,36 @@ fn unblock_program(state: State<'_, AppState>, id: String) -> Result<(), String>
     logged(&state, "unblock", &block.path, result)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SettingsView {
+    notifications: bool,
+    /// A development build: its autostart entry would point at a build that needs the dev server.
+    dev_build: bool,
+}
+
+#[tauri::command(async)]
+fn get_settings(state: State<'_, AppState>) -> SettingsView {
+    SettingsView { notifications: lock(&state.settings).settings.notifications, dev_build: cfg!(debug_assertions) }
+}
+
+#[tauri::command(async)]
+fn set_notifications(state: State<'_, AppState>, enabled: bool) {
+    let mut store = lock(&state.settings);
+    store.settings.notifications = enabled;
+    store.save();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // A second launch brings up the window of the instance that is already running.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| shell::show_main_window(app)))
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![shell::HIDDEN_ARG]),
+        ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -264,11 +293,27 @@ pub fn run() {
                 scanner: scanner::Scanner::new(),
                 profile: Mutex::new(profile::Profile::load(data_dir.join("profile.json"))),
                 responses: Mutex::new(responses::Store::load(&data_dir)),
+                settings: Mutex::new(shell::SettingsStore::load(data_dir.join("settings.json"))),
             });
+
+            shell::setup_tray(app)?;
+            // Started by the autostart entry: stay in the tray.
+            if std::env::args().any(|arg| arg == shell::HIDDEN_ARG) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
 
             let handle = app.handle().clone();
             std::thread::spawn(move || monitor::run(handle));
             Ok(())
+        })
+        // Closing the window keeps the monitoring running; quitting is done from the tray.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                shell::hide_to_tray(window.app_handle());
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_overview,
@@ -292,7 +337,9 @@ pub fn run() {
             restore_file,
             delete_quarantined,
             block_program,
-            unblock_program
+            unblock_program,
+            get_settings,
+            set_notifications
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

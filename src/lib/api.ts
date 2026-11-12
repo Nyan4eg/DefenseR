@@ -108,6 +108,12 @@ export interface ResponsesState {
   log: ResponseLogEntry[];
 }
 
+export interface AppSettings {
+  notifications: boolean;
+  /** Development build: start with Windows is unavailable. */
+  devBuild: boolean;
+}
+
 export interface AiStatus {
   hasKey: boolean;
 }

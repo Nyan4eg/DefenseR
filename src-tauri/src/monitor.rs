@@ -10,7 +10,7 @@ use crate::incidents::{Evidence, Finding, Severity, Target};
 use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::Verdict;
-use crate::{lock, AppState};
+use crate::{lock, shell, AppState};
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const PROFILE_SAVE_EVERY: u64 = 6;
@@ -120,10 +120,12 @@ pub fn run(app: AppHandle) {
         let mut findings = rules::evaluate(&snapshot, store.autostart_baseline());
         findings.extend(file_findings);
         findings.extend(behavior_findings);
-        if store.merge(findings, now) {
+        let merge = store.merge(findings, now);
+        if merge.changed {
             store.save();
         }
         drop(store);
+        shell::notify_incidents(&app, &merge.new);
 
         std::thread::sleep(INTERVAL);
     }
