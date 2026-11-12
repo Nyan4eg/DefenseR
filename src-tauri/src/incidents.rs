@@ -28,7 +28,7 @@ pub enum Status {
     Dismissed,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub struct Evidence {
     pub label: String,
     pub value: String,
@@ -112,7 +112,7 @@ struct StoreData {
 pub struct Merge {
     /// Something worth saving changed.
     pub changed: bool,
-    /// Incidents seen for the first time.
+    /// Incidents seen for the first time, and ones whose severity has just been raised.
     pub new: Vec<Incident>,
 }
 
@@ -182,9 +182,14 @@ impl Store {
         }
     }
 
-    pub fn set_reputation(&mut self, id: &str, reputation: crate::vt::Reputation) {
-        if let Some(incident) = self.data.incidents.iter_mut().find(|i| i.id == id) {
-            incident.reputation = Some(reputation);
+    /// Returns whether the stored answer changed.
+    pub fn set_reputation(&mut self, id: &str, reputation: crate::vt::Reputation) -> bool {
+        match self.data.incidents.iter_mut().find(|i| i.id == id) {
+            Some(incident) if incident.reputation.as_ref().map(|known| known.checked_at) != Some(reputation.checked_at) => {
+                incident.reputation = Some(reputation);
+                true
+            }
+            _ => false,
         }
     }
 
@@ -215,6 +220,18 @@ impl Store {
             match self.data.incidents.iter_mut().find(|i| i.id == finding.id) {
                 Some(incident) => {
                     incident.last_seen = now;
+                    // A later pass can know more about the same subject, such as a second opinion.
+                    if incident.severity != finding.severity || incident.summary != finding.summary {
+                        let raised = finding.severity > incident.severity;
+                        incident.severity = finding.severity;
+                        incident.title = finding.title;
+                        incident.summary = finding.summary;
+                        incident.evidence = finding.evidence;
+                        changed = true;
+                        if raised && incident.status != Status::Dismissed {
+                            new.push(incident.clone());
+                        }
+                    }
                     // The process id changes when the program restarts.
                     if incident.target != finding.target {
                         incident.target = finding.target;

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager};
 
@@ -10,10 +10,23 @@ use crate::incidents::{Evidence, Finding, Severity, Target};
 use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::Verdict;
-use crate::{downloads, lock, shell, AppState};
+use crate::downloads::Place;
+use crate::vt::Reputation;
+use crate::{ai, downloads, lock, shell, vt, AppState};
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const PROFILE_SAVE_EVERY: u64 = 6;
+
+/// The rules whose files get a second opinion from VirusTotal when the user allowed that.
+const SECOND_OPINION_RULES: [&str; 2] = ["process-ml-malicious", "new-file-ml-malicious"];
+/// Time between automatic lookups; keeps well inside the free key's 4 requests a minute.
+const SECOND_OPINION_GAP: Duration = Duration::from_secs(20);
+/// After a failed lookup (no connection, quota used up) nothing is asked for this long.
+const SECOND_OPINION_BACKOFF: Duration = Duration::from_secs(10 * 60);
+/// An answer is reused for this long before the file is asked about again.
+const SECOND_OPINION_TTL_SECS: u64 = 24 * 60 * 60;
+/// This many antivirus engines calling a file malicious counts as agreement with the model.
+const AGREEMENT: u32 = 3;
 
 pub fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
@@ -76,11 +89,52 @@ fn scan_running_files(state: &AppState, processes: &[ProcessInfo]) -> Vec<Findin
     findings
 }
 
+/// Asks VirusTotal about the files the model calls malicious, at most one new file per pass,
+/// and raises the severity of the findings it agrees with. Returns the answers by finding id.
+fn second_opinion(state: &AppState, findings: &mut [Finding], next_lookup: &mut Instant, now: u64) -> Vec<(String, Reputation)> {
+    let mut answers = Vec::new();
+    for finding in findings.iter_mut().filter(|finding| SECOND_OPINION_RULES.contains(&finding.rule)) {
+        let path = finding.target.as_ref().and_then(|target| target.path.as_deref());
+        let Some(sha256) = path.and_then(|path| state.scanner.cached(Path::new(path))).and_then(|result| result.sha256) else { continue };
+
+        let known = lock(&state.reputations).get(&sha256).filter(|known| now.saturating_sub(known.checked_at) < SECOND_OPINION_TTL_SECS).cloned();
+        let reputation = match known {
+            Some(reputation) => reputation,
+            None if Instant::now() >= *next_lookup => {
+                let Ok(Some(api_key)) = ai::load_key(vt::KEY_NAME) else { continue };
+                match vt::lookup(&api_key, &sha256, now) {
+                    Ok(reputation) => {
+                        *next_lookup = Instant::now() + SECOND_OPINION_GAP;
+                        lock(&state.reputations).insert(sha256, reputation.clone());
+                        reputation
+                    }
+                    Err(_) => {
+                        *next_lookup = Instant::now() + SECOND_OPINION_BACKOFF;
+                        continue;
+                    }
+                }
+            }
+            None => continue,
+        };
+
+        if reputation.malicious >= AGREEMENT {
+            finding.severity = Severity::High;
+            finding.summary.push_str(&format!(
+                " Антивирусы с этим согласны: по данным VirusTotal, файл считают вредоносным {} из {}.",
+                reputation.malicious, reputation.total
+            ));
+        }
+        answers.push((finding.id.clone(), reputation));
+    }
+    answers
+}
+
 /// Background loop: snapshot the system, run the rules, fold the findings into the store.
 pub fn run(app: AppHandle) {
     let state = app.state::<AppState>();
     let mut last_pass = now_secs();
     let mut passes = 0u64;
+    let mut next_lookup = Instant::now();
     loop {
         let processes = processes::collect(&mut lock(&state.sys));
         let autostart = autostart::collect();
@@ -89,12 +143,12 @@ pub fn run(app: AppHandle) {
         let file_findings = scan_running_files(&state, &processes);
 
         let now = now_secs();
-        let download_findings = if lock(&state.settings).settings.watch_downloads {
-            downloads::check(&state.downloads, &state.scanner, now)
-        } else {
-            lock(&state.downloads).pause(now);
-            Vec::new()
-        };
+        let settings = lock(&state.settings).settings.clone();
+        let download_findings = downloads::check(&state.downloads, &state.scanner, now, |place| match place {
+            Place::Downloads | Place::Desktop => settings.watch_downloads,
+            Place::Temp => settings.watch_temp,
+            Place::Removable => settings.watch_removable,
+        });
         let behavior_findings = {
             let connections = network::collect();
             let has_signature = |exe: &str| state.scanner.cached(Path::new(exe)).and_then(|r| r.signature).map(|s| s.status == SignatureStatus::Valid);
@@ -108,6 +162,23 @@ pub fn run(app: AppHandle) {
         };
         last_pass = now;
         passes += 1;
+
+        // Collected before the store is locked: asking VirusTotal can take a while.
+        let mut file_findings = file_findings;
+        let mut download_findings = download_findings;
+        let mut answers = Vec::new();
+        if settings.auto_virustotal {
+            let trust = lock(&state.trust);
+            let trusted = |finding: &Finding| {
+                let path = finding.target.as_ref().and_then(|target| target.path.as_deref());
+                path.and_then(|path| state.scanner.cached(Path::new(path))).is_some_and(|result| trust.trusts(&result))
+            };
+            file_findings.retain(|finding| !trusted(finding));
+            download_findings.retain(|finding| !trusted(finding));
+            drop(trust);
+            answers.extend(second_opinion(&state, &mut file_findings, &mut next_lookup, now));
+            answers.extend(second_opinion(&state, &mut download_findings, &mut next_lookup, now));
+        }
 
         let mut store = lock(&state.store);
         if store.autostart_baseline().is_none() {
@@ -130,7 +201,11 @@ pub fn run(app: AppHandle) {
             });
         }
         let merge = store.merge(findings, now);
-        if merge.changed {
+        let mut answered = false;
+        for (id, reputation) in answers {
+            answered |= store.set_reputation(&id, reputation);
+        }
+        if merge.changed || answered {
             store.save();
         }
         drop(store);

@@ -3,7 +3,7 @@ import { Activity, BrainCircuit, ChevronDown, Download, FileSearch, FolderSearch
 import { FileCheck } from "../components/FileCheck";
 import { ResponseActions } from "../components/ResponseActions";
 import { Badge, Card, PageHeader, Tabs } from "../components/ui";
-import { formatBytes, formatTime, inTauri, usePolling, type AppSettings, type DownloadsStatus, type ModelInfo, type ScanProgress, type ScanResult, type Signature, type Verdict } from "../lib/api";
+import { formatBytes, formatTime, inTauri, usePolling, type DownloadsStatus, type ModelInfo, type ScanProgress, type ScanResult, type Signature, type Verdict, type WatchedPlace } from "../lib/api";
 
 export type ScanRequest = { kind: "processes" } | { kind: "paths"; paths: string[] };
 
@@ -133,30 +133,36 @@ function ResultRow({ result, onChanged }: { result: ScanResult; onChanged: () =>
   );
 }
 
-/** Programs from the Downloads folder that were checked on their own as they appeared. */
+const PLACES: Record<WatchedPlace, string> = {
+  downloads: "Загрузки",
+  desktop: "Рабочий стол",
+  temp: "Временная папка",
+  removable: "Съёмный диск",
+};
+
+/** Programs that were checked on their own as they appeared in the watched places. */
 function DownloadsCard() {
   const status = usePolling<DownloadsStatus>("get_downloads_status", 5000);
-  const settings = usePolling<AppSettings>("get_settings", 15_000);
-  if (!status || !settings) return null;
+  if (!status) return null;
 
-  const state = !settings.watchDownloads
-    ? "Проверка выключена в настройках"
-    : status.folder
-      ? `Слежу за папкой ${status.folder} · проверено программ: ${status.checked}`
-      : "Windows не сообщила, где находится папка загрузок";
+  const watched = status.folders.map((folder) => (folder.place === "removable" ? `${PLACES.removable} ${folder.path}` : PLACES[folder.place]));
+  const state =
+    watched.length === 0
+      ? "Проверка новых файлов выключена в настройках"
+      : `Слежу за: ${watched.join(", ").toLowerCase()} · проверено программ: ${status.checked}`;
 
   return (
     <Card className="mt-6 overflow-hidden">
       <div className="px-5 py-4">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Download size={16} className="text-emerald-400" />
-          Новые файлы в «Загрузках»
+          Новые файлы
         </div>
-        <p className="mt-1 break-all text-sm text-white/50">{state}</p>
+        <p className="mt-1 text-sm text-white/50">{state}</p>
       </div>
       {status.recent.length === 0 ? (
         <div className="border-t border-white/6 px-5 py-4 text-sm text-white/45">
-          Пока ничего не проверялось. Программа, которая появится в папке, будет оценена через несколько секунд.
+          Пока ничего не проверялось. Программа, которая появится в одном из этих мест, будет оценена через несколько секунд.
         </div>
       ) : (
         status.recent.map((item) => {
@@ -168,6 +174,7 @@ function DownloadsCard() {
                 <div className="truncate text-sm">{item.name}</div>
                 <div className="truncate font-mono text-xs text-white/35">{item.path}</div>
               </div>
+              <Badge>{PLACES[item.place]}</Badge>
               {item.signature === "valid" && <Badge tone="accent">Подписан</Badge>}
               {item.signature === "invalid" && <Badge tone="warn">Подпись нарушена</Badge>}
               <div className={`shrink-0 text-right text-xs ${verdict.text}`}>{verdict.label}</div>

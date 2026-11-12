@@ -39,7 +39,7 @@ pub(crate) struct AppState {
     pub updates: Mutex<update::Status>,
     pub trust: Mutex<trust::Store>,
     /// VirusTotal answers of this session, by SHA-256.
-    reputations: Mutex<HashMap<String, vt::Reputation>>,
+    pub reputations: Mutex<HashMap<String, vt::Reputation>>,
 }
 
 impl AppState {
@@ -424,6 +424,9 @@ fn forget_autostart(state: State<'_, AppState>, id: String) -> Result<(), String
 struct SettingsView {
     notifications: bool,
     watch_downloads: bool,
+    watch_temp: bool,
+    watch_removable: bool,
+    auto_virustotal: bool,
     auto_update: bool,
     /// A development build: its autostart entry would point at a build that needs the dev server.
     dev_build: bool,
@@ -432,7 +435,15 @@ struct SettingsView {
 #[tauri::command(async)]
 fn get_settings(state: State<'_, AppState>) -> SettingsView {
     let settings = lock(&state.settings).settings.clone();
-    SettingsView { notifications: settings.notifications, watch_downloads: settings.watch_downloads, auto_update: settings.auto_update, dev_build: cfg!(debug_assertions) }
+    SettingsView {
+        notifications: settings.notifications,
+        watch_downloads: settings.watch_downloads,
+        watch_temp: settings.watch_temp,
+        watch_removable: settings.watch_removable,
+        auto_virustotal: settings.auto_virustotal,
+        auto_update: settings.auto_update,
+        dev_build: cfg!(debug_assertions),
+    }
 }
 
 #[tauri::command(async)]
@@ -447,6 +458,20 @@ fn set_watch_downloads(state: State<'_, AppState>, enabled: bool) {
     let mut store = lock(&state.settings);
     store.settings.watch_downloads = enabled;
     store.save();
+}
+
+/// Switches one of the on/off settings that have no command of their own.
+#[tauri::command(async)]
+fn set_option(state: State<'_, AppState>, name: String, enabled: bool) -> Result<(), String> {
+    let mut store = lock(&state.settings);
+    match name.as_str() {
+        "watchTemp" => store.settings.watch_temp = enabled,
+        "watchRemovable" => store.settings.watch_removable = enabled,
+        "autoVirustotal" => store.settings.auto_virustotal = enabled,
+        _ => return Err("Неизвестная настройка.".to_string()),
+    }
+    store.save();
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -506,7 +531,14 @@ pub fn run() {
                 settings: Mutex::new(shell::SettingsStore::load(data_dir.join("settings.json"))),
                 downloads: Mutex::new(downloads::Watcher::load(
                     data_dir.join("downloads.json"),
-                    app.path().download_dir().ok(),
+                    [
+                        (app.path().download_dir().ok(), downloads::Place::Downloads),
+                        (app.path().desktop_dir().ok(), downloads::Place::Desktop),
+                        (Some(std::env::temp_dir()), downloads::Place::Temp),
+                    ]
+                    .into_iter()
+                    .filter_map(|(dir, place)| Some((dir?, place)))
+                    .collect(),
                     monitor::now_secs(),
                 )),
                 updates: Mutex::new(update::Status::default()),
@@ -573,6 +605,7 @@ pub fn run() {
             set_notifications,
             set_watch_downloads,
             get_downloads_status,
+            set_option,
             set_auto_update,
             get_update_status,
             check_update,

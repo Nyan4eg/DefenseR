@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CircleCheck, KeyRound, LoaderCircle, MonitorCog, RefreshCw } from "lucide-react";
+import { CircleCheck, FileSearch, KeyRound, LoaderCircle, MonitorCog, RefreshCw } from "lucide-react";
 import { Card, PageHeader } from "../components/ui";
 import { call, formatTime, inTauri, usePolling, type AiStatus, type AppSettings, type UpdateStatus } from "../lib/api";
 
@@ -53,16 +53,6 @@ function BackgroundCard() {
     }
   };
 
-  const changeDownloads = async (enabled: boolean) => {
-    setError(null);
-    try {
-      await call("set_watch_downloads", { enabled });
-      setSettings((prev) => prev && { ...prev, watchDownloads: enabled });
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
   return (
     <Card className="mt-4 max-w-2xl p-5">
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -93,16 +83,73 @@ function BackgroundCard() {
         </div>
         <Toggle checked={settings?.notifications ?? false} disabled={!settings} onChange={changeNotifications} />
       </div>
+      {error && <div className="mt-3 text-sm text-rose-300">{error}</div>}
+    </Card>
+  );
+}
 
-      <div className="mt-4 flex items-center gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm">Проверять новые файлы в «Загрузках»</div>
-          <div className="mt-0.5 text-xs text-white/45">
-            Программы, которые появляются в папке загрузок, сразу оцениваются моделью и проверяются на подпись. Архивы не распаковываются.
-          </div>
-        </div>
-        <Toggle checked={settings?.watchDownloads ?? false} disabled={!settings} onChange={changeDownloads} />
+type FileOption = "watchDownloads" | "watchTemp" | "watchRemovable" | "autoVirustotal";
+
+const FILE_OPTIONS: { key: FileOption; title: string; description: string }[] = [
+  {
+    key: "watchDownloads",
+    title: "«Загрузки» и рабочий стол",
+    description: "Программы, которые появляются в этих папках, сразу оцениваются моделью и проверяются на подпись. Архивы не распаковываются.",
+  },
+  {
+    key: "watchTemp",
+    title: "Временная папка",
+    description: "Сюда распаковываются установщики и сюда же часто кладут свои файлы вредоносные программы. Об этой папке сообщается только при уверенной оценке модели или нарушенной подписи.",
+  },
+  {
+    key: "watchRemovable",
+    title: "Флешки и другие съёмные диски",
+    description: "При подключении диска проверяются все программы на нём, затем — новые.",
+  },
+  {
+    key: "autoVirustotal",
+    title: "Спрашивать VirusTotal автоматически",
+    description: "Когда модель считает файл вредоносным, DefenseR сам отправит его SHA-256 в VirusTotal и поднимет важность инцидента, если антивирусы согласны. Нужен ключ VirusTotal. Выключено, пока вы не включите: отпечатки файлов будут уходить без вашего нажатия.",
+  },
+];
+
+/** Which places are watched for new programs, and whether VirusTotal is asked on its own. */
+function FilesCard({ hasVtKey }: { hasVtKey: boolean }) {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    call<AppSettings>("get_settings").then(setSettings).catch((e) => setError(String(e)));
+  }, []);
+
+  const change = async (key: FileOption, enabled: boolean) => {
+    setError(null);
+    try {
+      await (key === "watchDownloads" ? call("set_watch_downloads", { enabled }) : call("set_option", { name: key, enabled }));
+      setSettings((prev) => prev && { ...prev, [key]: enabled });
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  return (
+    <Card className="mt-4 max-w-2xl p-5">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <FileSearch size={16} className="text-emerald-400" />
+        Проверка новых файлов
       </div>
+      {FILE_OPTIONS.map(({ key, title, description }) => (
+        <div key={key} className="mt-4 flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm">{title}</div>
+            <div className="mt-0.5 text-xs text-white/45">{description}</div>
+            {key === "autoVirustotal" && settings?.autoVirustotal && !hasVtKey && (
+              <div className="mt-1 text-xs text-amber-300">Ключ VirusTotal не добавлен, поэтому запросы не отправляются.</div>
+            )}
+          </div>
+          <Toggle checked={settings?.[key] ?? false} disabled={!settings} onChange={(enabled) => change(key, enabled)} />
+        </div>
+      ))}
       {error && <div className="mt-3 text-sm text-rose-300">{error}</div>}
     </Card>
   );
@@ -301,6 +348,7 @@ export function SettingsPage({ hasKey, onChanged }: { hasKey: boolean; onChanged
         onChanged={() => setVtKey((key) => key + 1)}
       />
 
+      <FilesCard hasVtKey={vt?.hasKey ?? false} />
       <BackgroundCard />
       <UpdatesCard />
 
@@ -311,8 +359,8 @@ export function SettingsPage({ hasKey, onChanged }: { hasKey: boolean; onChanged
           именно этого инцидента: имена процессов, пути и команды. Путь к папке вашего профиля заменяется на %USERPROFILE%.
         </p>
         <p className="mt-2">
-          В VirusTotal — только SHA-256 файла (его цифровой отпечаток) и только по кнопке «Проверить на VirusTotal». Сам файл, его имя и путь
-          не отправляются.
+          В VirusTotal — только SHA-256 файла (его цифровой отпечаток): по кнопке «Проверить на VirusTotal», а если вы включили автоматическую
+          проверку — ещё и для файлов, которые модель сочла вредоносными. Сам файл, его имя и путь не отправляются.
         </p>
         <p className="mt-2">Список процессов, сетевые соединения и остальные данные компьютер не покидают.</p>
       </Card>

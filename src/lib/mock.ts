@@ -254,7 +254,7 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       trust.publishers = trust.publishers.filter((p) => p.signer !== args?.id);
       return null;
     case "get_settings":
-      return { notifications: true, watchDownloads: true, autoUpdate: true, devBuild: false };
+      return { notifications: true, watchDownloads: true, watchTemp: true, watchRemovable: true, autoVirustotal: false, autoUpdate: true, devBuild: false };
     case "get_update_status":
     case "check_update":
       return { current: "0.1.1", available: "0.2.0", notes: "Проверка файлов по VirusTotal.", checkedAt: Math.floor(Date.now() / 1000) - 600, checking: false, installing: false, error: null, devBuild: false };
@@ -263,14 +263,20 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
     case "set_auto_update":
     case "get_downloads_status":
       return {
-        folder: "C:\\Users\\demo\\Downloads",
+        folders: [
+          { path: "C:\\Users\\demo\\Downloads", place: "downloads" },
+          { path: "C:\\Users\\demo\\Desktop", place: "desktop" },
+          { path: "C:\\Users\\demo\\AppData\\Local\\Temp", place: "temp" },
+          { path: "E:\\", place: "removable" },
+        ],
         checked: 14,
         recent: [
-          { path: "C:\\Users\\demo\\Downloads\\free-codec-pack.exe", name: "free-codec-pack.exe", verdict: "malicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 240 },
-          { path: "C:\\Users\\demo\\Downloads\\VSCodeUserSetup-x64.exe", name: "VSCodeUserSetup-x64.exe", verdict: "clean", signature: "valid", at: Math.floor(Date.now() / 1000) - 5400 },
-          { path: "C:\\Users\\demo\\Downloads\\tool\\helper.dll", name: "helper.dll", verdict: "suspicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 86400 },
+          { path: "C:\\Users\\demo\\Downloads\\free-codec-pack.exe", name: "free-codec-pack.exe", verdict: "malicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 240, place: "downloads" },
+          { path: "C:\\Users\\demo\\Downloads\\VSCodeUserSetup-x64.exe", name: "VSCodeUserSetup-x64.exe", verdict: "clean", signature: "valid", at: Math.floor(Date.now() / 1000) - 5400, place: "desktop" },
+          { path: "C:\\Users\\demo\\Downloads\\tool\\helper.dll", name: "helper.dll", verdict: "suspicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 86400, place: "removable" },
         ],
       };
+    case "set_option":
     case "set_watch_downloads":
     case "set_notifications":
       return null;

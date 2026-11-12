@@ -155,6 +155,10 @@ export interface ResponsesState {
 export interface AppSettings {
   notifications: boolean;
   watchDownloads: boolean;
+  watchTemp: boolean;
+  watchRemovable: boolean;
+  /** Ask VirusTotal without being asked about files the model calls malicious. */
+  autoVirustotal: boolean;
   autoUpdate: boolean;
   /** Development build: start with Windows is unavailable. */
   devBuild: boolean;
@@ -199,7 +203,9 @@ export interface Signature {
   signer: string | null;
 }
 
-/** A program from the Downloads folder that was checked as soon as it appeared. */
+export type WatchedPlace = "downloads" | "desktop" | "temp" | "removable";
+
+/** A program that was checked as soon as it appeared in one of the watched places. */
 export interface CheckedDownload {
   path: string;
   name: string;
@@ -207,11 +213,12 @@ export interface CheckedDownload {
   signature: Signature["status"] | null;
   /** Unix seconds. */
   at: number;
+  place: WatchedPlace;
 }
 
 export interface DownloadsStatus {
-  /** Null when Windows did not report a Downloads folder. */
-  folder: string | null;
+  /** The folders watched right now. */
+  folders: { path: string; place: WatchedPlace }[];
   checked: number;
   recent: CheckedDownload[];
 }

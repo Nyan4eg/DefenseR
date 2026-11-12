@@ -25,9 +25,19 @@ pub struct Settings {
     /// Show a Windows notification for new incidents of medium and high severity.
     #[serde(default = "enabled")]
     pub notifications: bool,
-    /// Check programs that appear in the Downloads folder.
+    /// Check programs that appear in the Downloads folder and on the desktop.
     #[serde(default = "enabled")]
     pub watch_downloads: bool,
+    /// The same for the temporary folder.
+    #[serde(default = "enabled")]
+    pub watch_temp: bool,
+    /// Check the programs on a removable drive when it is connected.
+    #[serde(default = "enabled")]
+    pub watch_removable: bool,
+    /// Ask VirusTotal on its own about files the model calls malicious. Off unless the user
+    /// turns it on, because it sends file hashes without being asked each time.
+    #[serde(default)]
+    pub auto_virustotal: bool,
     /// Install new versions on their own while the window is hidden.
     #[serde(default = "enabled")]
     pub auto_update: bool,
@@ -38,7 +48,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { notifications: true, watch_downloads: true, auto_update: true, tray_hint_shown: false }
+        Self { notifications: true, watch_downloads: true, watch_temp: true, watch_removable: true, auto_virustotal: false, auto_update: true, tray_hint_shown: false }
     }
 }
 
