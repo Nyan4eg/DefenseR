@@ -121,6 +121,14 @@ pub fn run(app: AppHandle) {
         findings.extend(file_findings);
         findings.extend(download_findings);
         findings.extend(behavior_findings);
+        // Nothing is raised about files the user trusts or that come from a publisher they trust.
+        {
+            let trust = lock(&state.trust);
+            findings.retain(|finding| {
+                let path = finding.target.as_ref().and_then(|target| target.path.as_deref());
+                !path.and_then(|path| state.scanner.cached(Path::new(path))).is_some_and(|result| trust.trusts(&result))
+            });
+        }
         let merge = store.merge(findings, now);
         if merge.changed {
             store.save();

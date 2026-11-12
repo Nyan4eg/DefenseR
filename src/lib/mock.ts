@@ -1,5 +1,5 @@
 // Sample data for working on the UI in a plain browser. Never used inside the Tauri app.
-import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, ProcessInfo, ProtectionStatus, ResponsesState, ScanResult } from "./api";
+import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, ProcessInfo, ProtectionStatus, ResponsesState, ScanResult, TrustState } from "./api";
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -129,6 +129,8 @@ function respond(action: ResponsesState["log"][number]["action"], target: string
 }
 
 let hasKey = false;
+let hasVtKey = false;
+const trust: TrustState = { files: [], publishers: [{ signer: "Demo Software LLC", addedAt: now - 86400 }] };
 
 const DEMO_EXPLANATION =
   "Это демонстрационное объяснение: в браузере запрос к Claude не отправляется.\n\nВ приложении здесь будет разбор инцидента простым языком: что произошло, насколько это опасно и что стоит сделать.";
@@ -219,6 +221,38 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       if (item && command === "enable_autostart") autostart = [...autostart, { name: item.name, command: item.command, source: item.source, scope: item.scope, flags: [] }];
       return respond(command === "enable_autostart" ? "autostart-enable" : "autostart-forget", `${item?.source}\\${item?.name}`);
     }
+    case "get_vt_status":
+      return { hasKey: hasVtKey };
+    case "set_vt_key":
+      hasVtKey = true;
+      return null;
+    case "clear_vt_key":
+      hasVtKey = false;
+      return null;
+    case "check_reputation": {
+      if (!hasVtKey) throw "Сначала добавьте ключ VirusTotal в настройках.";
+      const bad = String(args?.path ?? "").toLowerCase().includes("roaming\\svchost");
+      const reputation = { sha256: "9f2c1e0b7a4d5c6e8f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70", known: true, malicious: bad ? 47 : 0, suspicious: bad ? 2 : 0, total: 71, label: bad ? "trojan.agent/stealer" : null, analysedAt: now - 7200, checkedAt: Math.floor(Date.now() / 1000) };
+      incidents = incidents.map((i) => (i.id === args?.incident ? { ...i, reputation } : i));
+      return new Promise((resolve) => setTimeout(() => resolve(reputation), 700));
+    }
+    case "get_file_identity": {
+      const path = String(args?.path);
+      const signed = path.includes("Program Files");
+      return { sha256: "9f2c", publisher: signed ? "Demo Software LLC" : null, trustedFile: trust.files.some((f) => f.path === path), trustedPublisher: signed };
+    }
+    case "trust_file": {
+      const path = String(args?.path);
+      if (!args?.publisher) trust.files = [{ sha256: `demo-${Date.now()}`, name: path.split("\\").pop() ?? path, path, addedAt: Math.floor(Date.now() / 1000) }, ...trust.files];
+      incidents = incidents.map((i) => (i.target?.path === path ? { ...i, status: "resolved" } : i));
+      return null;
+    }
+    case "get_trust":
+      return { files: [...trust.files], publishers: [...trust.publishers] };
+    case "untrust":
+      trust.files = trust.files.filter((f) => f.sha256 !== args?.id);
+      trust.publishers = trust.publishers.filter((p) => p.signer !== args?.id);
+      return null;
     case "get_settings":
       return { notifications: true, watchDownloads: true, autoUpdate: true, devBuild: false };
     case "get_update_status":
@@ -229,12 +263,12 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
     case "set_auto_update":
     case "get_downloads_status":
       return {
-        folder: "C:\Users\demo\Downloads",
+        folder: "C:\\Users\\demo\\Downloads",
         checked: 14,
         recent: [
-          { path: "C:\Users\demo\Downloads\free-codec-pack.exe", name: "free-codec-pack.exe", verdict: "malicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 240 },
-          { path: "C:\Users\demo\Downloads\VSCodeUserSetup-x64.exe", name: "VSCodeUserSetup-x64.exe", verdict: "clean", signature: "valid", at: Math.floor(Date.now() / 1000) - 5400 },
-          { path: "C:\Users\demo\Downloads\tool\helper.dll", name: "helper.dll", verdict: "suspicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 86400 },
+          { path: "C:\\Users\\demo\\Downloads\\free-codec-pack.exe", name: "free-codec-pack.exe", verdict: "malicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 240 },
+          { path: "C:\\Users\\demo\\Downloads\\VSCodeUserSetup-x64.exe", name: "VSCodeUserSetup-x64.exe", verdict: "clean", signature: "valid", at: Math.floor(Date.now() / 1000) - 5400 },
+          { path: "C:\\Users\\demo\\Downloads\\tool\\helper.dll", name: "helper.dll", verdict: "suspicious", signature: "unsigned", at: Math.floor(Date.now() / 1000) - 86400 },
         ],
       };
     case "set_watch_downloads":

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { Ban, History, Lock, Rocket } from "lucide-react";
+import { BadgeCheck, Ban, History, Lock, Rocket } from "lucide-react";
 import { Card, ConfirmDialog, Loading, PageHeader } from "../components/ui";
-import { call, formatBytes, formatTime, type ResponseLogEntry, type ResponsesState } from "../lib/api";
+import { call, formatBytes, formatTime, usePolling, type ResponseLogEntry, type ResponsesState, type TrustState } from "../lib/api";
 
 const ACTION_LABELS: Record<ResponseLogEntry["action"], string> = {
   kill: "Процесс завершён",
@@ -51,6 +51,8 @@ function Section({ icon: Icon, title, empty, children }: { icon: typeof Lock; ti
 export function ResponsesPage({ responses, onChanged }: { responses: ResponsesState | null; onChanged: () => void }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trustKey, setTrustKey] = useState(0);
+  const trust = usePolling<TrustState>("get_trust", 15_000, trustKey);
 
   if (!responses) {
     return (
@@ -69,6 +71,7 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
     } catch (e) {
       setError(String(e));
     }
+    setTrustKey((key) => key + 1);
     onChanged();
   };
 
@@ -199,6 +202,63 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
           </div>
         ))}
       </Section>
+
+      {trust && (
+        <Section
+          icon={BadgeCheck}
+          title={`Доверенные · ${trust.files.length + trust.publishers.length}`}
+          empty={trust.files.length + trust.publishers.length === 0 ? "Доверенных файлов и издателей нет" : null}
+        >
+          {trust.publishers.map((publisher) => (
+            <div key={publisher.signer} className={row}>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm">{publisher.signer}</div>
+                <div className="text-xs text-white/35">Издатель: все программы с его действительной подписью</div>
+              </div>
+              <div className="shrink-0 text-xs text-white/40">{formatTime(publisher.addedAt)}</div>
+              <button
+                className={button}
+                onClick={() =>
+                  setPending({
+                    command: "untrust",
+                    id: publisher.signer,
+                    title: `Перестать доверять издателю ${publisher.signer}?`,
+                    body: "DefenseR снова будет сообщать о подозрительном поведении его программ.",
+                    confirmLabel: "Убрать из доверенных",
+                    danger: false,
+                  })
+                }
+              >
+                Убрать
+              </button>
+            </div>
+          ))}
+          {trust.files.map((file) => (
+            <div key={file.sha256} className={row}>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm">{file.name}</div>
+                <div className="truncate font-mono text-xs text-white/35">{file.path}</div>
+              </div>
+              <div className="shrink-0 text-xs text-white/40">{formatTime(file.addedAt)}</div>
+              <button
+                className={button}
+                onClick={() =>
+                  setPending({
+                    command: "untrust",
+                    id: file.sha256,
+                    title: `Перестать доверять файлу ${file.name}?`,
+                    body: "DefenseR снова будет заводить инциденты об этом файле.",
+                    confirmLabel: "Убрать из доверенных",
+                    danger: false,
+                  })
+                }
+              >
+                Убрать
+              </button>
+            </div>
+          ))}
+        </Section>
+      )}
 
       <Section icon={History} title="Журнал действий" empty={responses.log.length === 0 ? "Действий пока не было" : null}>
         {responses.log.map((entry, i) => (

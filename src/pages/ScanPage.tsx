@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, BrainCircuit, ChevronDown, Download, FileSearch, FolderSearch, LoaderCircle, Upload } from "lucide-react";
+import { FileCheck } from "../components/FileCheck";
 import { ResponseActions } from "../components/ResponseActions";
 import { Badge, Card, PageHeader, Tabs } from "../components/ui";
 import { formatBytes, formatTime, inTauri, usePolling, type AppSettings, type DownloadsStatus, type ModelInfo, type ScanProgress, type ScanResult, type Signature, type Verdict } from "../lib/api";
@@ -117,6 +118,11 @@ function ResultRow({ result, onChanged }: { result: ScanResult; onChanged: () =>
             </>
           )}
         </dl>
+      )}
+      {open && result.sha256 && (
+        <div className="mx-4 mb-3">
+          <FileCheck path={result.path} sha256={result.sha256} canTrust={result.score !== null} onDone={onChanged} />
+        </div>
       )}
       {open && (result.verdict === "malicious" || result.verdict === "suspicious") && (
         <div className="mx-4 mb-3">

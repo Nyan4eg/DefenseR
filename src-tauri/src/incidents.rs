@@ -95,6 +95,9 @@ pub struct Incident {
     /// Absent in incidents stored by earlier versions.
     #[serde(default)]
     pub target: Option<Target>,
+    /// What VirusTotal said about the file, once the user asked.
+    #[serde(default)]
+    pub reputation: Option<crate::vt::Reputation>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -179,6 +182,12 @@ impl Store {
         }
     }
 
+    pub fn set_reputation(&mut self, id: &str, reputation: crate::vt::Reputation) {
+        if let Some(incident) = self.data.incidents.iter_mut().find(|i| i.id == id) {
+            incident.reputation = Some(reputation);
+        }
+    }
+
     /// Closes the active incidents about a target the user has just dealt with, without
     /// waiting for the next monitoring pass. Returns whether any incident was closed.
     pub fn settle(&mut self, now: u64, about: impl Fn(&Target) -> bool) -> bool {
@@ -229,6 +238,7 @@ impl Store {
                         status: Status::Active,
                         explanation: None,
                         target: finding.target,
+                        reputation: None,
                     };
                     new.push(incident.clone());
                     self.data.incidents.push(incident);

@@ -9,8 +9,11 @@ mod rules;
 pub mod scanner;
 mod shell;
 mod startup;
+mod trust;
 mod update;
+mod vt;
 
+use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -21,6 +24,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Defender and firewall state is read through PowerShell, which is slow, so it is cached.
 const PROTECTION_TTL: Duration = Duration::from_secs(60);
+/// A VirusTotal answer is reused for this long.
+const REPUTATION_TTL_SECS: u64 = 60 * 60;
 
 pub(crate) struct AppState {
     pub sys: Mutex<System>,
@@ -32,6 +37,9 @@ pub(crate) struct AppState {
     pub settings: Mutex<shell::SettingsStore>,
     pub downloads: Mutex<downloads::Watcher>,
     pub updates: Mutex<update::Status>,
+    pub trust: Mutex<trust::Store>,
+    /// VirusTotal answers of this session, by SHA-256.
+    reputations: Mutex<HashMap<String, vt::Reputation>>,
 }
 
 impl AppState {
@@ -93,7 +101,7 @@ fn dismiss_incident(state: State<'_, AppState>, id: String) {
 #[tauri::command(async)]
 fn explain_incident(state: State<'_, AppState>, id: String) -> Result<String, String> {
     let incident = lock(&state.store).get(&id).ok_or("Инцидент не найден.")?;
-    let api_key = ai::load_api_key()?.ok_or("Сначала добавьте ключ API в настройках.")?;
+    let api_key = ai::load_key(ai::KEY_NAME)?.ok_or("Сначала добавьте ключ API в настройках.")?;
 
     // The store is not locked during the network call.
     let explanation = ai::explain(&api_key, &incident)?;
@@ -112,21 +120,125 @@ struct AiStatus {
 
 #[tauri::command(async)]
 fn get_ai_status() -> Result<AiStatus, String> {
-    Ok(AiStatus { has_key: ai::load_api_key()?.is_some() })
+    Ok(AiStatus { has_key: ai::load_key(ai::KEY_NAME)?.is_some() })
 }
 
 #[tauri::command(async)]
 fn set_api_key(key: String) -> Result<(), String> {
-    let key = key.trim();
-    if key.is_empty() {
-        return Err("Ключ API пуст.".to_string());
-    }
-    ai::save_api_key(key)
+    ai::save_key(ai::KEY_NAME, &key)
 }
 
 #[tauri::command(async)]
 fn clear_api_key() -> Result<(), String> {
-    ai::delete_api_key()
+    ai::delete_key(ai::KEY_NAME)
+}
+
+#[tauri::command(async)]
+fn get_vt_status() -> Result<AiStatus, String> {
+    Ok(AiStatus { has_key: ai::load_key(vt::KEY_NAME)?.is_some() })
+}
+
+#[tauri::command(async)]
+fn set_vt_key(key: String) -> Result<(), String> {
+    ai::save_key(vt::KEY_NAME, &key)
+}
+
+#[tauri::command(async)]
+fn clear_vt_key() -> Result<(), String> {
+    ai::delete_key(vt::KEY_NAME)
+}
+
+/// The scan result of one file, with its signature verified.
+fn scan_one(state: &AppState, path: &str) -> Result<scanner::ScanResult, String> {
+    let result = state.scanner.scan_all(&[std::path::PathBuf::from(path)], |_| {}).pop().ok_or("Файл не удалось проверить.")?;
+    match (&result.sha256, &result.error) {
+        (Some(_), _) => Ok(result),
+        (None, error) => Err(error.clone().unwrap_or_else(|| "Файл не удалось прочитать.".to_string())),
+    }
+}
+
+/// Asks VirusTotal about a file by its SHA-256. Only runs on the user's request. `sha256`
+/// is used when the file itself is gone; `incident` stores the answer with that incident.
+#[tauri::command(async)]
+fn check_reputation(state: State<'_, AppState>, path: Option<String>, sha256: Option<String>, incident: Option<String>) -> Result<vt::Reputation, String> {
+    let from_file = path.as_deref().map(|path| scan_one(&state, path)).and_then(|result| result.ok()).and_then(|result| result.sha256);
+    let sha256 = from_file.or(sha256).ok_or("Файл не найден, а его SHA-256 неизвестен.")?.to_lowercase();
+    let api_key = ai::load_key(vt::KEY_NAME)?.ok_or("Сначала добавьте ключ VirusTotal в настройках.")?;
+
+    let now = monitor::now_secs();
+    let cached = lock(&state.reputations).get(&sha256).filter(|known| now.saturating_sub(known.checked_at) < REPUTATION_TTL_SECS).cloned();
+    let reputation = match cached {
+        Some(reputation) => reputation,
+        // Nothing is locked during the network call.
+        None => {
+            let reputation = vt::lookup(&api_key, &sha256, now)?;
+            lock(&state.reputations).insert(sha256, reputation.clone());
+            reputation
+        }
+    };
+    if let Some(id) = incident {
+        let mut store = lock(&state.store);
+        store.set_reputation(&id, reputation.clone());
+        store.save();
+    }
+    Ok(reputation)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileIdentity {
+    sha256: String,
+    /// Who signed the file, when the signature is valid.
+    publisher: Option<String>,
+    trusted_file: bool,
+    trusted_publisher: bool,
+}
+
+/// What a file can be trusted by, and whether it already is.
+#[tauri::command(async)]
+fn get_file_identity(state: State<'_, AppState>, path: String) -> Result<FileIdentity, String> {
+    let result = scan_one(&state, &path)?;
+    let trust = lock(&state.trust);
+    Ok(FileIdentity {
+        sha256: result.sha256.clone().unwrap_or_default(),
+        publisher: trust::publisher(&result).map(str::to_string),
+        trusted_file: trust.trusts_file(&result),
+        trusted_publisher: trust.trusts_publisher(&result),
+    })
+}
+
+/// Trusts a file (by its contents) or, with `publisher`, everything validly signed by its
+/// publisher, and closes the incidents this makes moot.
+#[tauri::command(async)]
+fn trust_file(state: State<'_, AppState>, path: String, publisher: bool) -> Result<(), String> {
+    let result = scan_one(&state, &path)?;
+    {
+        let mut trust = lock(&state.trust);
+        if publisher {
+            trust.add_publisher(&result, monitor::now_secs())?;
+        } else {
+            trust.add_file(&result, monitor::now_secs())?;
+        }
+        trust.save();
+    }
+    settle(&state, |target| {
+        let other = target.path.as_deref().and_then(|path| state.scanner.cached(std::path::Path::new(path)));
+        other.is_some_and(|other| lock(&state.trust).trusts(&other))
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn get_trust(state: State<'_, AppState>) -> trust::State {
+    lock(&state.trust).state.clone()
+}
+
+/// Stops trusting a file (by SHA-256) or a publisher (by name).
+#[tauri::command(async)]
+fn untrust(state: State<'_, AppState>, id: String) {
+    let mut trust = lock(&state.trust);
+    trust.remove(&id);
+    trust.save();
 }
 
 #[tauri::command(async)]
@@ -398,6 +510,8 @@ pub fn run() {
                     monitor::now_secs(),
                 )),
                 updates: Mutex::new(update::Status::default()),
+                trust: Mutex::new(trust::Store::load(data_dir.join("trust.json"))),
+                reputations: Mutex::new(HashMap::new()),
             });
 
             shell::setup_tray(app)?;
@@ -433,6 +547,14 @@ pub fn run() {
             get_ai_status,
             set_api_key,
             clear_api_key,
+            get_vt_status,
+            set_vt_key,
+            clear_vt_key,
+            check_reputation,
+            get_file_identity,
+            trust_file,
+            get_trust,
+            untrust,
             get_model_info,
             scan_paths,
             scan_processes,

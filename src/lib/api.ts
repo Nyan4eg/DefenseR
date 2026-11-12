@@ -64,6 +64,37 @@ export interface Incident {
   explanation: string | null;
   /** The process and file the incident is about, when there is one to act on. */
   target: ResponseTarget | null;
+  /** VirusTotal's answer about the file, once the user asked for it. */
+  reputation?: Reputation | null;
+}
+
+/** What VirusTotal knows about a file. */
+export interface Reputation {
+  sha256: string;
+  /** False when VirusTotal has never seen the file. */
+  known: boolean;
+  malicious: number;
+  suspicious: number;
+  /** Antivirus engines that gave a verdict. */
+  total: number;
+  label: string | null;
+  /** When VirusTotal last analysed the file, Unix seconds. */
+  analysedAt: number | null;
+  checkedAt: number;
+}
+
+/** What a file can be trusted by, and whether it already is. */
+export interface FileIdentity {
+  sha256: string;
+  /** Who signed the file, when the signature is valid. */
+  publisher: string | null;
+  trustedFile: boolean;
+  trustedPublisher: boolean;
+}
+
+export interface TrustState {
+  files: { sha256: string; name: string; path: string; addedAt: number }[];
+  publishers: { signer: string; addedAt: number }[];
 }
 
 export interface ResponseTarget {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { EyeOff, GraduationCap, LoaderCircle, Radar, ShieldCheck, Sparkles } from "lucide-react";
+import { FileCheck } from "../components/FileCheck";
 import { ResponseActions } from "../components/ResponseActions";
 import { Badge, Card, Loading, PageHeader, Tabs } from "../components/ui";
 import { call, formatTime, type Incident, type ProfileStatus, type Severity } from "../lib/api";
@@ -25,6 +26,8 @@ function IncidentCard({ incident, hasKey, onChanged, onOpenSettings }: CardProps
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const severity = SEVERITY[incident.severity];
+  const path = incident.target?.path ?? null;
+  const sha256 = incident.evidence.find((item) => item.label === "SHA-256")?.value || null;
 
   const explain = async () => {
     setBusy(true);
@@ -86,6 +89,19 @@ function IncidentCard({ incident, hasKey, onChanged, onOpenSettings }: CardProps
       {incident.status === "active" && incident.target && (
         <div className="mt-3">
           <ResponseActions target={incident.target} name={incident.target.path?.split("\\").pop() ?? incident.target.autostart?.name ?? "процесс"} onDone={onChanged} />
+        </div>
+      )}
+
+      {(path || sha256 || incident.reputation) && (
+        <div className="mt-3">
+          <FileCheck
+            path={path}
+            sha256={sha256}
+            incidentId={incident.id}
+            reputation={incident.reputation}
+            canTrust={incident.status === "active"}
+            onDone={onChanged}
+          />
         </div>
       )}
 
