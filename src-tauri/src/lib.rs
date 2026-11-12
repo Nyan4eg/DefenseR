@@ -501,7 +501,7 @@ async fn check_update(app: AppHandle) -> Result<update::Status, String> {
 #[tauri::command]
 async fn install_update(app: AppHandle) -> Result<(), String> {
     let update = update::check(&app).await?.ok_or("Установлена последняя версия.")?;
-    update::install(&app, update).await
+    update::install(&app, update, false).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -547,8 +547,9 @@ pub fn run() {
             });
 
             shell::setup_tray(app)?;
-            // Started by the autostart entry: stay in the tray.
-            if std::env::args().any(|arg| arg == shell::HIDDEN_ARG) {
+            // Started by the autostart entry or after a background update: stay in the tray.
+            let after_update = update::started_by_background_update(app.handle());
+            if after_update || std::env::args().any(|arg| arg == shell::HIDDEN_ARG) {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }

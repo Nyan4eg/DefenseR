@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { ProcessActions } from "../components/ProcessActions";
 import { Card, FlagBadges, Loading, PageHeader, SearchInput, Tabs } from "../components/ui";
 import { formatBytes, type ProcessInfo } from "../lib/api";
 
@@ -10,8 +12,16 @@ const SORT_OPTIONS: { id: SortKey; label: string }[] = [
   { id: "name", label: "По имени" },
 ];
 
-export function ProcessesPage({ processes }: { processes: ProcessInfo[] | null }) {
+interface Props {
+  processes: ProcessInfo[] | null;
+  /** Called after a response action, so lists elsewhere refresh. */
+  onChanged: () => void;
+}
+
+export function ProcessesPage({ processes, onChanged }: Props) {
   const [query, setQuery] = useState("");
+  /** The process whose row is expanded. */
+  const [open, setOpen] = useState<number | null>(null);
   const [sort, setSort] = useState<SortKey>("cpu");
 
   const rows = useMemo(() => {
@@ -29,7 +39,7 @@ export function ProcessesPage({ processes }: { processes: ProcessInfo[] | null }
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Процессы" subtitle={processes ? `Запущено: ${processes.length}` : "Сбор данных…"}>
+      <PageHeader title="Процессы" subtitle={processes ? `Запущено: ${processes.length} · нажмите на строку, чтобы увидеть действия` : "Сбор данных…"}>
         <div className="flex gap-3">
           <Tabs value={sort} onChange={setSort} options={SORT_OPTIONS} />
           <SearchInput value={query} onChange={setQuery} placeholder="Имя, путь или PID" />
@@ -48,24 +58,40 @@ export function ProcessesPage({ processes }: { processes: ProcessInfo[] | null }
                 <th className="px-3 py-2.5 text-right font-medium">ЦП</th>
                 <th className="px-3 py-2.5 text-right font-medium">Память</th>
                 <th className="px-4 py-2.5 font-medium">Путь</th>
+                <th className="w-8" />
               </tr>
             </thead>
             <tbody>
               {rows.map((p) => (
-                <tr key={p.pid} className="border-t border-white/5 hover:bg-white/[0.04]">
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{p.name}</span>
-                      <FlagBadges flags={p.flags} />
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 tabular-nums text-white/50">{p.pid}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{p.cpu.toFixed(1)}%</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatBytes(p.memory)}</td>
-                  <td className="max-w-0 w-1/2 truncate px-4 py-2 text-white/45" title={p.exe ?? ""}>
-                    {p.exe ?? "нет доступа"}
-                  </td>
-                </tr>
+                <Fragment key={p.pid}>
+                  <tr
+                    onClick={() => setOpen(open === p.pid ? null : p.pid)}
+                    className={`cursor-pointer border-t border-white/5 hover:bg-white/[0.04] ${open === p.pid ? "bg-white/[0.04]" : ""}`}
+                  >
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{p.name}</span>
+                        <FlagBadges flags={p.flags} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-white/50">{p.pid}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.cpu.toFixed(1)}%</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatBytes(p.memory)}</td>
+                    <td className="max-w-0 w-1/2 truncate px-4 py-2 text-white/45" title={p.exe ?? ""}>
+                      {p.exe ?? "нет доступа"}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <ChevronDown size={15} className={`text-white/30 transition-transform ${open === p.pid ? "rotate-180" : ""}`} />
+                    </td>
+                  </tr>
+                  {open === p.pid && (
+                    <tr>
+                      <td colSpan={6} className="px-4 pb-3">
+                        <ProcessActions pid={p.pid} path={p.exe} name={p.name} onDone={onChanged} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

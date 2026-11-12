@@ -168,8 +168,8 @@ export default function App() {
             {page === "scan" && <ScanPage scan={scan} model={model} onScan={startScan} onChanged={refresh} />}
             {page === "responses" && <ResponsesPage responses={responses} onChanged={refresh} />}
             {page === "settings" && <SettingsPage hasKey={hasKey} onChanged={refresh} />}
-            {page === "processes" && <ProcessesPage processes={processes} />}
-            {page === "network" && <NetworkPage connections={connections} processes={processes} />}
+            {page === "processes" && <ProcessesPage processes={processes} onChanged={refresh} />}
+            {page === "network" && <NetworkPage connections={connections} processes={processes} onChanged={refresh} />}
             {page === "autostart" && <AutostartPage autostart={autostart} onChanged={refresh} />}
           </motion.div>
         </AnimatePresence>

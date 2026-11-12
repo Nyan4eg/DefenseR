@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { ProcessActions } from "../components/ProcessActions";
 import { Badge, Card, Loading, PageHeader, Tabs } from "../components/ui";
 import type { Connection, ProcessInfo } from "../lib/api";
 
@@ -23,10 +25,24 @@ function endpoint(addr: string, port: number): string {
   return addr.includes(":") ? `[${addr}]:${port}` : `${addr}:${port}`;
 }
 
-export function NetworkPage({ connections, processes }: { connections: Connection[] | null; processes: ProcessInfo[] | null }) {
-  const [filter, setFilter] = useState<Filter>("external");
+/** Identifies a socket across refreshes of the list. */
+function keyOf(c: Connection): string {
+  return `${c.protocol}|${c.localAddr}|${c.localPort}|${c.remoteAddr}|${c.remotePort}|${c.pid}`;
+}
 
-  const names = useMemo(() => new Map((processes ?? []).map((p) => [p.pid, p.name])), [processes]);
+interface Props {
+  connections: Connection[] | null;
+  processes: ProcessInfo[] | null;
+  /** Called after a response action, so lists elsewhere refresh. */
+  onChanged: () => void;
+}
+
+export function NetworkPage({ connections, processes, onChanged }: Props) {
+  const [filter, setFilter] = useState<Filter>("external");
+  /** The connection whose row is expanded. */
+  const [open, setOpen] = useState<string | null>(null);
+
+  const owners = useMemo(() => new Map((processes ?? []).map((p) => [p.pid, p])), [processes]);
 
   const rows = useMemo(() => {
     const list = connections ?? [];
@@ -41,7 +57,7 @@ export function NetworkPage({ connections, processes }: { connections: Connectio
     <div className="flex h-full flex-col">
       <PageHeader
         title="Сеть"
-        subtitle={connections ? `Соединений с интернетом: ${external} · всего сокетов: ${connections.length}` : "Сбор данных…"}
+        subtitle={connections ? `Соединений с интернетом: ${external} · всего сокетов: ${connections.length} · нажмите на строку, чтобы увидеть действия` : "Сбор данных…"}
       >
         <Tabs value={filter} onChange={setFilter} options={FILTERS} />
       </PageHeader>
@@ -60,13 +76,21 @@ export function NetworkPage({ connections, processes }: { connections: Connectio
                 <th className="px-3 py-2.5 font-medium">Локальный адрес</th>
                 <th className="px-3 py-2.5 font-medium">Удалённый адрес</th>
                 <th className="px-4 py-2.5 font-medium">Состояние</th>
+                <th className="w-8" />
               </tr>
             </thead>
             <tbody>
-              {rows.map((c, i) => (
-                <tr key={i} className="border-t border-white/5 hover:bg-white/[0.04]">
+              {rows.map((c) => {
+                const key = keyOf(c);
+                const owner = c.pid != null ? owners.get(c.pid) : undefined;
+                return (
+                <Fragment key={key}>
+                <tr
+                  onClick={() => owner && setOpen(open === key ? null : key)}
+                  className={`border-t border-white/5 hover:bg-white/[0.04] ${owner ? "cursor-pointer" : ""} ${open === key ? "bg-white/[0.04]" : ""}`}
+                >
                   <td className="px-4 py-2">
-                    <span className="font-medium">{(c.pid != null && names.get(c.pid)) || "—"}</span>
+                    <span className="font-medium">{owner?.name ?? "—"}</span>
                     {c.pid != null && <span className="ml-2 text-xs tabular-nums text-white/35">{c.pid}</span>}
                   </td>
                   <td className="px-3 py-2">
@@ -81,8 +105,20 @@ export function NetworkPage({ connections, processes }: { connections: Connectio
                     )}
                   </td>
                   <td className="px-4 py-2 text-white/50">{c.state ? (STATE_LABELS[c.state] ?? c.state) : "—"}</td>
+                  <td className="py-2 pr-3">
+                    {owner && <ChevronDown size={15} className={`text-white/30 transition-transform ${open === key ? "rotate-180" : ""}`} />}
+                  </td>
                 </tr>
-              ))}
+                {open === key && owner && (
+                  <tr>
+                    <td colSpan={6} className="px-4 pb-3">
+                      <ProcessActions pid={owner.pid} path={owner.exe} name={owner.name} onDone={onChanged} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
