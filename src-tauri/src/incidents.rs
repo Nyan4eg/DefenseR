@@ -31,16 +31,34 @@ pub struct Evidence {
     pub value: String,
 }
 
-/// The process and file an incident is about, for the response actions.
+/// An autostart entry, as the collector names it.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct AutostartRef {
+    pub source: String,
+    pub name: String,
+}
+
+/// What an incident is about, for the response actions.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Target {
     pub pid: Option<u32>,
     pub path: Option<String>,
+    /// Absent in incidents stored by earlier versions.
+    #[serde(default)]
+    pub autostart: Option<AutostartRef>,
 }
 
 impl Target {
     pub fn process(pid: u32, path: &str) -> Option<Self> {
-        Some(Self { pid: Some(pid), path: Some(path.to_string()) })
+        Some(Self { pid: Some(pid), path: Some(path.to_string()), autostart: None })
+    }
+
+    pub fn file(path: &str) -> Option<Self> {
+        Some(Self { path: Some(path.to_string()), ..Self::default() })
+    }
+
+    pub fn autostart(source: &str, name: &str) -> Option<Self> {
+        Some(Self { autostart: Some(AutostartRef { source: source.to_string(), name: name.to_string() }), ..Self::default() })
     }
 }
 

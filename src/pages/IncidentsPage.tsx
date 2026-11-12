@@ -85,7 +85,7 @@ function IncidentCard({ incident, hasKey, onChanged, onOpenSettings }: CardProps
 
       {incident.status === "active" && incident.target && (
         <div className="mt-3">
-          <ResponseActions target={incident.target} name={incident.target.path?.split("\\").pop() ?? "процесс"} onDone={onChanged} />
+          <ResponseActions target={incident.target} name={incident.target.path?.split("\\").pop() ?? incident.target.autostart?.name ?? "процесс"} onDone={onChanged} />
         </div>
       )}
 

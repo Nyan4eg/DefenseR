@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Ban, CircleStop, LoaderCircle, Lock } from "lucide-react";
+import { Ban, CircleStop, LoaderCircle, Lock, Rocket } from "lucide-react";
 import { ConfirmDialog } from "./ui";
 import { call, type ResponseTarget } from "../lib/api";
 
-type Action = "kill" | "quarantine" | "block";
+type Action = "kill" | "quarantine" | "block" | "autostart";
 
 interface Props {
   target: ResponseTarget;
@@ -16,7 +16,19 @@ const DONE: Record<Action, string> = {
   kill: "Процесс завершён",
   quarantine: "Файл в карантине",
   block: "Выход в сеть заблокирован",
+  autostart: "Убрано из автозагрузки",
 };
+
+/** Text of the confirmation for turning an autostart entry off. */
+export function autostartDialog(name: string, scope: "user" | "machine" | null) {
+  return {
+    title: `Убрать «${name}» из автозагрузки?`,
+    body: `Запись перестанет запускаться при входе в Windows. Сама программа останется на месте, а запись можно вернуть на странице «Реакции».${
+      scope === "user" ? "" : " Если запись действует для всех пользователей, Windows попросит подтвердить действие от имени администратора."
+    }`,
+    confirmLabel: "Убрать из автозагрузки",
+  };
+}
 
 /** Buttons for acting on a process or file. Every action asks for confirmation first. */
 export function ResponseActions({ target, name, onDone }: Props) {
@@ -41,6 +53,7 @@ export function ResponseActions({ target, name, onDone }: Props) {
       body: "В брандмауэр Windows добавится правило, которое блокирует исходящие соединения этой программы. Windows попросит подтвердить действие от имени администратора. Снять блокировку можно на странице «Реакции».",
       confirmLabel: "Заблокировать",
     },
+    autostart: autostartDialog(target.autostart?.name ?? name, target.autostart?.source.startsWith("HKCU") ? "user" : null),
   };
 
   const run = async (action: Action) => {
@@ -51,6 +64,7 @@ export function ResponseActions({ target, name, onDone }: Props) {
       if (action === "kill") await call("kill_process", { pid: target.pid, path: target.path });
       if (action === "quarantine") await call("quarantine_file", { path: target.path });
       if (action === "block") await call("block_program", { path: target.path });
+      if (action === "autostart") await call("disable_autostart", { ...target.autostart });
       setDone((prev) => [...prev, action]);
       onDone();
     } catch (e) {
@@ -64,6 +78,7 @@ export function ResponseActions({ target, name, onDone }: Props) {
     { action: "kill", label: "Завершить процесс", icon: CircleStop, available: target.pid !== null },
     { action: "quarantine", label: "В карантин", icon: Lock, available: target.path !== null },
     { action: "block", label: "Запретить сеть", icon: Ban, available: target.path !== null },
+    { action: "autostart", label: "Убрать из автозагрузки", icon: Rocket, available: !!target.autostart },
   ];
 
   return (

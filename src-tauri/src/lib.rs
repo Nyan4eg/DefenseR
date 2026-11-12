@@ -8,6 +8,7 @@ mod responses;
 mod rules;
 pub mod scanner;
 mod shell;
+mod startup;
 
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -252,6 +253,45 @@ fn unblock_program(state: State<'_, AppState>, id: String) -> Result<(), String>
     logged(&state, "unblock", &block.path, result)
 }
 
+#[tauri::command(async)]
+fn disable_autostart(state: State<'_, AppState>, source: String, name: String) -> Result<(), String> {
+    let dir = lock(&state.responses).autostart_dir();
+    // The store is not locked while Windows waits for the user to approve the change.
+    let result = startup::disable(&dir, &source, &name, monitor::now_secs());
+    if let Ok(item) = &result {
+        lock(&state.responses).state.autostart.insert(0, item.clone());
+    }
+    logged(&state, "autostart-disable", &format!(r"{source}\{name}"), result.map(|_| ()))
+}
+
+fn disabled_autostart(state: &AppState, id: &str) -> Result<startup::Disabled, String> {
+    let store = lock(&state.responses);
+    store.state.autostart.iter().find(|item| item.id == id).cloned().ok_or_else(|| "Запись не найдена.".to_string())
+}
+
+#[tauri::command(async)]
+fn enable_autostart(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let item = disabled_autostart(&state, &id)?;
+    let dir = lock(&state.responses).autostart_dir();
+    let result = startup::enable(&dir, &item);
+    if result.is_ok() {
+        lock(&state.responses).state.autostart.retain(|other| other.id != id);
+    }
+    logged(&state, "autostart-enable", &format!(r"{}\{}", item.source, item.name), result)
+}
+
+/// Drops a turned-off entry for good.
+#[tauri::command(async)]
+fn forget_autostart(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let item = disabled_autostart(&state, &id)?;
+    let dir = lock(&state.responses).autostart_dir();
+    let result = startup::forget(&dir, &item);
+    if result.is_ok() {
+        lock(&state.responses).state.autostart.retain(|other| other.id != id);
+    }
+    logged(&state, "autostart-forget", &format!(r"{}\{}", item.source, item.name), result)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SettingsView {
@@ -359,6 +399,9 @@ pub fn run() {
             delete_quarantined,
             block_program,
             unblock_program,
+            disable_autostart,
+            enable_autostart,
+            forget_autostart,
             get_settings,
             set_notifications,
             set_watch_downloads,

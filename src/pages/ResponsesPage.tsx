@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Ban, History, Lock } from "lucide-react";
+import { Ban, History, Lock, Rocket } from "lucide-react";
 import { Card, ConfirmDialog, Loading, PageHeader } from "../components/ui";
 import { call, formatBytes, formatTime, type ResponseLogEntry, type ResponsesState } from "../lib/api";
 
@@ -10,6 +10,9 @@ const ACTION_LABELS: Record<ResponseLogEntry["action"], string> = {
   delete: "Файл удалён из карантина",
   block: "Выход в сеть заблокирован",
   unblock: "Блокировка сети снята",
+  "autostart-disable": "Запись убрана из автозагрузки",
+  "autostart-enable": "Запись возвращена в автозагрузку",
+  "autostart-forget": "Отключённая запись удалена",
 };
 
 const FAILED_LABELS: Record<ResponseLogEntry["action"], string> = {
@@ -19,6 +22,9 @@ const FAILED_LABELS: Record<ResponseLogEntry["action"], string> = {
   delete: "Не удалось удалить файл",
   block: "Не удалось заблокировать выход в сеть",
   unblock: "Не удалось снять блокировку",
+  "autostart-disable": "Не удалось убрать запись из автозагрузки",
+  "autostart-enable": "Не удалось вернуть запись в автозагрузку",
+  "autostart-forget": "Не удалось удалить отключённую запись",
 };
 
 interface Pending {
@@ -49,7 +55,7 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
   if (!responses) {
     return (
       <>
-        <PageHeader title="Реакции" subtitle="Карантин, блокировки сети и журнал действий" />
+        <PageHeader title="Реакции" subtitle="Карантин, блокировки сети, автозагрузка и журнал действий" />
         <Loading />
       </>
     );
@@ -71,7 +77,7 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
 
   return (
     <>
-      <PageHeader title="Реакции" subtitle="Карантин, блокировки сети и журнал действий. DefenseR ничего не делает сам — только по вашей команде" />
+      <PageHeader title="Реакции" subtitle="Карантин, блокировки сети, отключённая автозагрузка и журнал действий. DefenseR ничего не делает сам — только по вашей команде" />
       {error && <div className="mb-4 rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-2.5 text-sm text-rose-200">{error}</div>}
 
       <Section icon={Lock} title={`Карантин · ${responses.quarantine.length}`} empty={responses.quarantine.length === 0 ? "В карантине пусто" : null}>
@@ -141,6 +147,54 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
               }
             >
               Снять блокировку
+            </button>
+          </div>
+        ))}
+      </Section>
+
+      <Section
+        icon={Rocket}
+        title={`Отключённая автозагрузка · ${responses.autostart.length}`}
+        empty={responses.autostart.length === 0 ? "Отключённых записей нет" : null}
+      >
+        {responses.autostart.map((item) => (
+          <div key={item.id} className={row}>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm">{item.name}</div>
+              <div className="truncate font-mono text-xs text-white/35">{item.command}</div>
+            </div>
+            <div className="shrink-0 text-xs text-white/40">{formatTime(item.disabledAt)}</div>
+            <button
+              className={button}
+              onClick={() =>
+                setPending({
+                  command: "enable_autostart",
+                  id: item.id,
+                  title: `Вернуть «${item.name}» в автозагрузку?`,
+                  body: `Запись снова будет запускаться при входе в Windows.${
+                    item.scope === "machine" ? " Windows попросит подтвердить действие от имени администратора." : ""
+                  }`,
+                  confirmLabel: "Вернуть",
+                  danger: false,
+                })
+              }
+            >
+              Вернуть
+            </button>
+            <button
+              className={`${button} hover:bg-rose-400/15 hover:text-rose-200`}
+              onClick={() =>
+                setPending({
+                  command: "forget_autostart",
+                  id: item.id,
+                  title: `Удалить запись «${item.name}» навсегда?`,
+                  body: "DefenseR забудет эту запись, и вернуть её в автозагрузку будет нельзя. Сама программа останется на месте.",
+                  confirmLabel: "Удалить навсегда",
+                  danger: true,
+                })
+              }
+            >
+              Удалить
             </button>
           </div>
         ))}

@@ -53,6 +53,9 @@ pub struct LogEntry {
 pub struct State {
     pub quarantine: Vec<QuarantineItem>,
     pub blocks: Vec<FirewallBlock>,
+    /// Autostart entries the user turned off. Absent in files written by earlier versions.
+    #[serde(default)]
+    pub autostart: Vec<crate::startup::Disabled>,
     /// Newest first.
     pub log: Vec<LogEntry>,
 }
@@ -85,6 +88,11 @@ impl Store {
 
     pub fn quarantine_dir(&self) -> PathBuf {
         self.dir.join("quarantine")
+    }
+
+    /// Where files taken out of the Startup folder are kept.
+    pub fn autostart_dir(&self) -> PathBuf {
+        self.dir.join("autostart-disabled")
     }
 
     pub fn log<T>(&mut self, at: u64, action: &str, target: &str, result: &Result<T, String>) {
@@ -129,7 +137,7 @@ pub fn kill_process(sys: &mut System, pid: u32, expected_path: Option<&str>) -> 
 }
 
 /// Moves a file, falling back to copy-and-delete across drives.
-fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
+pub fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
     if std::fs::rename(from, to).is_ok() {
         return Ok(());
     }

@@ -47,7 +47,7 @@ const connections: Connection[] = [
   { protocol: "UDP", localAddr: "0.0.0.0", localPort: 5353, remoteAddr: null, remotePort: null, state: null, pid: 1000, remoteIsPublic: false },
 ];
 
-const autostart: AutostartEntry[] = [
+let autostart: AutostartEntry[] = [
   { name: "SecurityHealth", command: "%windir%\\system32\\SecurityHealthSystray.exe", source: "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "machine", flags: [] },
   { name: "Steam", command: '"C:\\Program Files (x86)\\Steam\\steam.exe" -silent', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: [] },
   { name: "OldUpdater", command: '"C:\\Program Files\\OldApp\\updater.exe"', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: ["missing-file"] },
@@ -118,6 +118,7 @@ const responses: ResponsesState = {
     { id: "a1b2c3d4e5f60718", name: "crack_setup.exe", originalPath: "C:\\Users\\demo\\Downloads\\crack_setup.exe", size: 3.4 * MB, quarantinedAt: now - 3600 },
   ],
   blocks: [],
+  autostart: [],
   log: [{ at: now - 3600, action: "quarantine", target: "C:\\Users\\demo\\Downloads\\crack_setup.exe", error: null }],
 };
 
@@ -202,6 +203,21 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       const block = responses.blocks.find((b) => b.id === args?.id);
       responses.blocks = responses.blocks.filter((b) => b.id !== args?.id);
       return respond("unblock", block?.path ?? "");
+    }
+    case "disable_autostart": {
+      const entry = autostart.find((e) => e.source === args?.source && e.name === args?.name);
+      if (!entry) throw "Запись уже исчезла из автозагрузки.";
+      autostart = autostart.filter((e) => e !== entry);
+      incidents = incidents.map((i) => (i.target?.autostart?.name === entry.name ? { ...i, status: "resolved" } : i));
+      responses.autostart = [{ id: String(Date.now()), name: entry.name, command: entry.command, source: entry.source, scope: entry.scope, disabledAt: Math.floor(Date.now() / 1000) }, ...responses.autostart];
+      return respond("autostart-disable", `${entry.source}\\${entry.name}`);
+    }
+    case "enable_autostart":
+    case "forget_autostart": {
+      const item = responses.autostart.find((a) => a.id === args?.id);
+      responses.autostart = responses.autostart.filter((a) => a.id !== args?.id);
+      if (item && command === "enable_autostart") autostart = [...autostart, { name: item.name, command: item.command, source: item.source, scope: item.scope, flags: [] }];
+      return respond(command === "enable_autostart" ? "autostart-enable" : "autostart-forget", `${item?.source}\\${item?.name}`);
     }
     case "get_settings":
       return { notifications: true, watchDownloads: true, devBuild: false };

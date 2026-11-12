@@ -179,7 +179,7 @@ fn finding(result: &ScanResult) -> Option<Finding> {
         title,
         summary: summary.to_string(),
         evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
-        target: Some(Target { pid: None, path: Some(result.path.clone()) }),
+        target: Target::file(&result.path),
     })
 }
 

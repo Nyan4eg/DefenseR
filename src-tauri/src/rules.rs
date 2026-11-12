@@ -100,7 +100,7 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
                     title: format!("{parent} запустил {}", process.name),
                     summary: "Офисное приложение запустило командную оболочку или обработчик скриптов. Так срабатывают вредоносные макросы в документах.".to_string(),
                     evidence: evidence(&[("Родительский процесс", parent), ("Запущенный процесс", &process.name), ("PID", &pid)]),
-                    target: Some(Target { pid: Some(process.pid), path: process.exe.clone() }),
+                    target: Some(Target { pid: Some(process.pid), path: process.exe.clone(), autostart: None }),
                 });
             }
         }
@@ -121,7 +121,7 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 title: format!("Автозагрузка «{}» запускает файл из временной папки", entry.name),
                 summary: "Запись автозагрузки ссылается на временную папку. Обычные программы так не устанавливаются; это типичный способ закрепления вредоносных программ.".to_string(),
                 evidence: details.clone(),
-                target: None,
+                target: Target::autostart(&entry.source, &entry.name),
             });
         }
 
@@ -133,7 +133,7 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 title: format!("Автозагрузка «{}» ссылается на несуществующий файл", entry.name),
                 summary: "Файл из записи автозагрузки не найден. Чаще всего это остаток удалённой программы.".to_string(),
                 evidence: details.clone(),
-                target: None,
+                target: Target::autostart(&entry.source, &entry.name),
             });
         }
 
@@ -147,7 +147,7 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 title: format!("Новая запись автозагрузки «{}»", entry.name),
                 summary: "Этой записи не было при первом запуске DefenseR, либо её команда изменилась. Новые программы добавляют себя в автозагрузку при установке; так же закрепляются и вредоносные.".to_string(),
                 evidence: details,
-                target: None,
+                target: Target::autostart(&entry.source, &entry.name),
             });
         }
     }

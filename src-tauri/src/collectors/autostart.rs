@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
@@ -18,7 +18,7 @@ pub struct AutostartEntry {
     pub flags: Vec<String>,
 }
 
-const RUN_KEYS: [(HKEY, &str, &str, &str); 5] = [
+pub const RUN_KEYS: [(HKEY, &str, &str, &str); 5] = [
     (HKEY_CURRENT_USER, "HKCU", "user", r"Software\Microsoft\Windows\CurrentVersion\Run"),
     (HKEY_CURRENT_USER, "HKCU", "user", r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
     (HKEY_LOCAL_MACHINE, "HKLM", "machine", r"Software\Microsoft\Windows\CurrentVersion\Run"),
@@ -30,6 +30,17 @@ const STARTUP_FOLDERS: [(&str, &str); 2] = [
     ("APPDATA", "user"),
     ("ProgramData", "machine"),
 ];
+
+/// The Startup folders that exist for this user, with their scope.
+pub fn startup_folders() -> Vec<(PathBuf, &'static str)> {
+    STARTUP_FOLDERS
+        .iter()
+        .filter_map(|&(env_var, scope)| {
+            let base = std::env::var(env_var).ok()?;
+            Some((Path::new(&base).join(r"Microsoft\Windows\Start Menu\Programs\Startup"), scope))
+        })
+        .collect()
+}
 
 /// Pulls the executable path out of a command line: `"C:\a b\x.exe" --flag` or `C:\x.exe --flag`.
 fn executable_of(command: &str) -> Option<&str> {
@@ -72,11 +83,7 @@ pub fn collect() -> Vec<AutostartEntry> {
         }
     }
 
-    for (env_var, scope) in STARTUP_FOLDERS {
-        let Ok(base) = std::env::var(env_var) else {
-            continue;
-        };
-        let folder = Path::new(&base).join(r"Microsoft\Windows\Start Menu\Programs\Startup");
+    for (folder, scope) in startup_folders() {
         let Ok(files) = std::fs::read_dir(&folder) else {
             continue;
         };

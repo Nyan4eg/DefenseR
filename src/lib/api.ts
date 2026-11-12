@@ -69,6 +69,18 @@ export interface Incident {
 export interface ResponseTarget {
   pid: number | null;
   path: string | null;
+  /** The autostart entry to turn off, when the incident is about one. */
+  autostart?: { source: string; name: string } | null;
+}
+
+/** An autostart entry the user turned off; it can be put back. */
+export interface DisabledAutostart {
+  id: string;
+  name: string;
+  command: string;
+  source: string;
+  scope: "user" | "machine";
+  disabledAt: number;
 }
 
 export interface ProfileStatus {
@@ -97,7 +109,7 @@ export interface FirewallBlock {
 
 export interface ResponseLogEntry {
   at: number;
-  action: "kill" | "quarantine" | "restore" | "delete" | "block" | "unblock";
+  action: "kill" | "quarantine" | "restore" | "delete" | "block" | "unblock" | "autostart-disable" | "autostart-enable" | "autostart-forget";
   target: string;
   error: string | null;
 }
@@ -105,6 +117,7 @@ export interface ResponseLogEntry {
 export interface ResponsesState {
   quarantine: QuarantineItem[];
   blocks: FirewallBlock[];
+  autostart: DisabledAutostart[];
   log: ResponseLogEntry[];
 }
 

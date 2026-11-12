@@ -52,13 +52,13 @@ export default function App() {
   const overview = usePolling<Overview>("get_overview", OVERVIEW_INTERVAL_MS);
   const processes = usePolling<ProcessInfo[]>("get_processes", 3000);
   const connections = usePolling<Connection[]>("get_connections", 5000);
-  const autostart = usePolling<AutostartEntry[]>("get_autostart", 30_000);
   const protection = usePolling<ProtectionStatus>("get_protection", 60_000);
 
   // Bumped after the user changes an incident or the API key, to re-fetch right away.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((key) => key + 1);
   const incidents = usePolling<Incident[]>("get_incidents", 5000, refreshKey);
+  const autostart = usePolling<AutostartEntry[]>("get_autostart", 30_000, refreshKey);
   const aiStatus = usePolling<AiStatus>("get_ai_status", 60_000, refreshKey);
   const hasKey = aiStatus?.hasKey ?? false;
   const profile = usePolling<ProfileStatus>("get_profile_status", 30_000);
@@ -170,7 +170,7 @@ export default function App() {
             {page === "settings" && <SettingsPage hasKey={hasKey} onChanged={refresh} />}
             {page === "processes" && <ProcessesPage processes={processes} />}
             {page === "network" && <NetworkPage connections={connections} processes={processes} />}
-            {page === "autostart" && <AutostartPage autostart={autostart} />}
+            {page === "autostart" && <AutostartPage autostart={autostart} onChanged={refresh} />}
           </motion.div>
         </AnimatePresence>
       </main>
