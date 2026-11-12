@@ -1,0 +1,41 @@
+/* Class names are only looked for in src/: the project also holds a multi-gigabyte dataset. */
+@import "tailwindcss" source(".");
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  /* The Tauri window is transparent so the Mica material shows through. */
+  background: transparent;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color: #e6edf3;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.12);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.22);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}

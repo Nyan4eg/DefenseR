@@ -1,0 +1,15 @@
+{
+  "featureCount": 813,
+  "dataset": "EMBER 2018",
+  "trained": "2026-11-12",
+  "trainSamples": 540000,
+  "testSamples": 200000,
+  "trees": 1000,
+  "auc": 0.9956630164500001,
+  "suspiciousThreshold": 0.5748681426048279,
+  "maliciousThreshold": 0.9821979403495789,
+  "suspiciousDetection": 0.97044,
+  "suspiciousFalsePositives": 0.01787,
+  "maliciousDetection": 0.87007,
+  "maliciousFalsePositives": 0.00118
+}
