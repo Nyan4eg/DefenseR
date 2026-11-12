@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 /// Resolved incidents are kept as history for this long.
 const HISTORY_SECS: u64 = 30 * 24 * 60 * 60;
+/// After the user acts on an incident, findings for it are ignored for this long: a monitoring
+/// pass that looked at the system just before the action would otherwise bring it back.
+const SETTLED_SECS: u64 = 120;
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
@@ -113,6 +116,8 @@ pub struct Merge {
 pub struct Store {
     path: PathBuf,
     data: StoreData,
+    /// Incidents closed by a response action, with the time of the action.
+    settled: Vec<(String, u64)>,
 }
 
 impl Store {
@@ -122,7 +127,7 @@ impl Store {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        Self { path, data }
+        Self { path, data, settled: Vec::new() }
     }
 
     pub fn save(&self) {
@@ -174,10 +179,27 @@ impl Store {
         }
     }
 
+    /// Closes the active incidents about a target the user has just dealt with, without
+    /// waiting for the next monitoring pass. Returns whether any incident was closed.
+    pub fn settle(&mut self, now: u64, about: impl Fn(&Target) -> bool) -> bool {
+        let mut closed = false;
+        for incident in &mut self.data.incidents {
+            if incident.status == Status::Active && incident.target.as_ref().is_some_and(&about) {
+                incident.status = Status::Resolved;
+                incident.last_seen = now;
+                self.settled.push((incident.id.clone(), now));
+                closed = true;
+            }
+        }
+        closed
+    }
+
     /// Folds one evaluation pass into the stored incidents.
     pub fn merge(&mut self, findings: Vec<Finding>, now: u64) -> Merge {
         let mut changed = false;
         let mut new = Vec::new();
+        self.settled.retain(|(_, at)| now.saturating_sub(*at) < SETTLED_SECS);
+        let findings: Vec<Finding> = findings.into_iter().filter(|finding| !self.settled.iter().any(|(id, _)| *id == finding.id)).collect();
         let seen: HashSet<String> = findings.iter().map(|f| f.id.clone()).collect();
 
         for finding in findings {
@@ -227,5 +249,40 @@ impl Store {
             .incidents
             .retain(|i| i.status != Status::Resolved || now.saturating_sub(i.last_seen) < HISTORY_SECS);
         Merge { changed: changed || self.data.incidents.len() != before, new }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn finding(id: &str) -> Finding {
+        Finding {
+            id: id.to_string(),
+            rule: "test",
+            severity: Severity::Low,
+            title: String::new(),
+            summary: String::new(),
+            evidence: Vec::new(),
+            target: Target::autostart("HKCU", id),
+        }
+    }
+
+    /// An incident the user acted on closes at once and is not reopened by a pass that
+    /// still carries the old finding; a finding that persists reopens it later.
+    #[test]
+    fn settled_incident_stays_closed_for_a_while() {
+        let mut store = Store { path: PathBuf::new(), data: StoreData::default(), settled: Vec::new() };
+        store.merge(vec![finding("a"), finding("b")], 100);
+
+        assert!(store.settle(105, |target| target.autostart.as_ref().is_some_and(|entry| entry.name == "a")));
+        let status = |store: &Store, id: &str| store.get(id).unwrap().status;
+        assert!(status(&store, "a") == Status::Resolved && status(&store, "b") == Status::Active);
+
+        store.merge(vec![finding("a"), finding("b")], 110);
+        assert!(status(&store, "a") == Status::Resolved, "a stale finding does not reopen it");
+
+        store.merge(vec![finding("a"), finding("b")], 110 + SETTLED_SECS);
+        assert!(status(&store, "a") == Status::Active, "a finding that persists does");
     }
 }

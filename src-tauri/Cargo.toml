@@ -1,6 +1,6 @@
 [package]
 name = "defenser"
-version = "0.1.1"
+version = "0.1.2"
 description = "AI-powered PC protection dashboard"
 edition = "2024"
 

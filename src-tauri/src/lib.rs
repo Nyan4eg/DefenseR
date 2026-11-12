@@ -177,6 +177,14 @@ fn get_responses(state: State<'_, AppState>) -> responses::State {
     lock(&state.responses).state.clone()
 }
 
+/// Closes the incidents about something the user has just dealt with.
+fn settle(state: &AppState, about: impl Fn(&incidents::Target) -> bool) {
+    let mut store = lock(&state.store);
+    if store.settle(monitor::now_secs(), about) {
+        store.save();
+    }
+}
+
 /// Writes the outcome of a response to the action log and passes it on.
 fn logged<T>(state: &AppState, action: &str, target: &str, result: Result<T, String>) -> Result<T, String> {
     let mut store = lock(&state.responses);
@@ -191,6 +199,9 @@ fn logged<T>(state: &AppState, action: &str, target: &str, result: Result<T, Str
 #[tauri::command(async)]
 fn kill_process(state: State<'_, AppState>, pid: u32, path: Option<String>) -> Result<(), String> {
     let result = responses::kill_process(&mut lock(&state.sys), pid, path.as_deref());
+    if result.is_ok() {
+        settle(&state, |target| target.pid == Some(pid));
+    }
     let target = path.unwrap_or_else(|| format!("PID {pid}"));
     logged(&state, "kill", &target, result)
 }
@@ -201,6 +212,7 @@ fn quarantine_file(state: State<'_, AppState>, path: String) -> Result<(), Strin
     let result = responses::quarantine(&dir, std::path::Path::new(&path), monitor::now_secs());
     if let Ok(item) = &result {
         lock(&state.responses).state.quarantine.insert(0, item.clone());
+        settle(&state, |target| target.pid.is_none() && target.path.as_deref().is_some_and(|other| other.eq_ignore_ascii_case(&path)));
     }
     logged(&state, "quarantine", &path, result.map(|_| ()))
 }
@@ -262,6 +274,7 @@ fn disable_autostart(state: State<'_, AppState>, source: String, name: String) -
     let result = startup::disable(&dir, &source, &name, monitor::now_secs());
     if let Ok(item) = &result {
         lock(&state.responses).state.autostart.insert(0, item.clone());
+        settle(&state, |target| target.autostart.as_ref().is_some_and(|entry| entry.source == source && entry.name == name));
     }
     logged(&state, "autostart-disable", &format!(r"{source}\{name}"), result.map(|_| ()))
 }
