@@ -24,6 +24,8 @@ use serde::Serialize;
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::lang::tr;
+
 /// Defender and firewall state is read through PowerShell, which is slow, so it is cached.
 const PROTECTION_TTL: Duration = Duration::from_secs(60);
 /// A VirusTotal answer is reused for this long.
@@ -103,8 +105,8 @@ fn dismiss_incident(state: State<'_, AppState>, id: String) {
 /// Sends the incident to Claude and stores the explanation. Only runs on the user's request.
 #[tauri::command(async)]
 fn explain_incident(state: State<'_, AppState>, id: String) -> Result<String, String> {
-    let incident = lock(&state.store).get(&id).ok_or("Инцидент не найден.")?;
-    let api_key = ai::load_key(ai::KEY_NAME)?.ok_or("Сначала добавьте ключ API в настройках.")?;
+    let incident = lock(&state.store).get(&id).ok_or(tr("Инцидент не найден.", "Incident not found."))?;
+    let api_key = ai::load_key(ai::KEY_NAME)?.ok_or(tr("Сначала добавьте ключ API в настройках.", "Add an API key in the settings first."))?;
 
     // The store is not locked during the network call.
     let explanation = ai::explain(&api_key, &incident)?;
@@ -153,10 +155,10 @@ fn clear_vt_key() -> Result<(), String> {
 
 /// The scan result of one file, with its signature verified.
 fn scan_one(state: &AppState, path: &str) -> Result<scanner::ScanResult, String> {
-    let result = state.scanner.scan_all(&[std::path::PathBuf::from(path)], |_| {}).pop().ok_or("Файл не удалось проверить.")?;
+    let result = state.scanner.scan_all(&[std::path::PathBuf::from(path)], |_| {}).pop().ok_or(tr("Файл не удалось проверить.", "The file could not be checked."))?;
     match (&result.sha256, &result.error) {
         (Some(_), _) => Ok(result),
-        (None, error) => Err(error.clone().unwrap_or_else(|| "Файл не удалось прочитать.".to_string())),
+        (None, error) => Err(error.clone().unwrap_or_else(|| tr("Файл не удалось прочитать.", "The file could not be read.").to_string())),
     }
 }
 
@@ -165,8 +167,8 @@ fn scan_one(state: &AppState, path: &str) -> Result<scanner::ScanResult, String>
 #[tauri::command(async)]
 fn check_reputation(state: State<'_, AppState>, path: Option<String>, sha256: Option<String>, incident: Option<String>) -> Result<vt::Reputation, String> {
     let from_file = path.as_deref().map(|path| scan_one(&state, path)).and_then(|result| result.ok()).and_then(|result| result.sha256);
-    let sha256 = from_file.or(sha256).ok_or("Файл не найден, а его SHA-256 неизвестен.")?.to_lowercase();
-    let api_key = ai::load_key(vt::KEY_NAME)?.ok_or("Сначала добавьте ключ VirusTotal в настройках.")?;
+    let sha256 = from_file.or(sha256).ok_or(tr("Файл не найден, а его SHA-256 неизвестен.", "The file was not found, and its SHA-256 is unknown."))?.to_lowercase();
+    let api_key = ai::load_key(vt::KEY_NAME)?.ok_or(tr("Сначала добавьте ключ VirusTotal в настройках.", "Add a VirusTotal key in the settings first."))?;
 
     let now = monitor::now_secs();
     let cached = lock(&state.reputations).get(&sha256).filter(|known| now.saturating_sub(known.checked_at) < REPUTATION_TTL_SECS).cloned();
@@ -334,7 +336,7 @@ fn quarantine_file(state: State<'_, AppState>, path: String) -> Result<(), Strin
 
 fn quarantined(state: &AppState, id: &str) -> Result<responses::QuarantineItem, String> {
     let store = lock(&state.responses);
-    store.state.quarantine.iter().find(|item| item.id == id).cloned().ok_or_else(|| "Файл в карантине не найден.".to_string())
+    store.state.quarantine.iter().find(|item| item.id == id).cloned().ok_or_else(|| tr("Файл в карантине не найден.", "The file was not found in quarantine.").to_string())
 }
 
 #[tauri::command(async)]
@@ -362,7 +364,7 @@ fn delete_quarantined(state: State<'_, AppState>, id: String) -> Result<(), Stri
 #[tauri::command(async)]
 fn block_program(state: State<'_, AppState>, path: String) -> Result<(), String> {
     if lock(&state.responses).state.blocks.iter().any(|block| block.path.eq_ignore_ascii_case(&path)) {
-        return Err("Эта программа уже заблокирована.".to_string());
+        return Err(tr("Эта программа уже заблокирована.", "This program is already blocked.").to_string());
     }
     // The store is not locked while Windows waits for the user to approve the change.
     let result = responses::block_program(std::path::Path::new(&path), monitor::now_secs());
@@ -374,7 +376,7 @@ fn block_program(state: State<'_, AppState>, path: String) -> Result<(), String>
 
 #[tauri::command(async)]
 fn unblock_program(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let block = lock(&state.responses).state.blocks.iter().find(|block| block.id == id).cloned().ok_or("Блокировка не найдена.")?;
+    let block = lock(&state.responses).state.blocks.iter().find(|block| block.id == id).cloned().ok_or(tr("Блокировка не найдена.", "Block not found."))?;
     let result = responses::unblock_program(&block);
     if result.is_ok() {
         lock(&state.responses).state.blocks.retain(|other| other.id != id);
@@ -396,7 +398,7 @@ fn disable_autostart(state: State<'_, AppState>, source: String, name: String) -
 
 fn disabled_autostart(state: &AppState, id: &str) -> Result<startup::Disabled, String> {
     let store = lock(&state.responses);
-    store.state.autostart.iter().find(|item| item.id == id).cloned().ok_or_else(|| "Запись не найдена.".to_string())
+    store.state.autostart.iter().find(|item| item.id == id).cloned().ok_or_else(|| tr("Запись не найдена.", "Entry not found.").to_string())
 }
 
 #[tauri::command(async)]
@@ -487,7 +489,7 @@ fn set_option(state: State<'_, AppState>, name: String, enabled: bool) -> Result
         "watchTemp" => store.settings.watch_temp = enabled,
         "watchRemovable" => store.settings.watch_removable = enabled,
         "autoVirustotal" => store.settings.auto_virustotal = enabled,
-        _ => return Err("Неизвестная настройка.".to_string()),
+        _ => return Err(tr("Неизвестная настройка.", "Unknown setting.").to_string()),
     }
     store.save();
     Ok(())
@@ -519,7 +521,7 @@ async fn check_update(app: AppHandle) -> Result<update::Status, String> {
 /// Installs the newest version. The interface calls it when the user asks for the update.
 #[tauri::command]
 async fn install_update(app: AppHandle) -> Result<(), String> {
-    let update = update::check(&app).await?.ok_or("Установлена последняя версия.")?;
+    let update = update::check(&app).await?.ok_or(tr("Установлена последняя версия.", "The latest version is already installed."))?;
     update::install(&app, update, false).await
 }
 
@@ -541,7 +543,7 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
 
             let settings = shell::SettingsStore::load(data_dir.join("settings.json"));
-            lang::set(settings.settings.language.as_deref().unwrap_or_else(lang::system));
+            lang::set(&settings.settings.language.clone().unwrap_or_else(|| lang::system().to_string()));
 
             app.manage(AppState {
                 sys: Mutex::new(System::new()?),

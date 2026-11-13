@@ -6,6 +6,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::lang::{tr, trs};
+
 const API_URL: &str = "https://www.virustotal.com/api/v3/files";
 const TIMEOUT: Duration = Duration::from_secs(30);
 /// The name of the key in Windows Credential Manager.
@@ -52,23 +54,23 @@ fn parse(sha256: &str, body: &Value, now: u64) -> Reputation {
 }
 
 fn request(api_key: &str, sha256: &str, now: u64) -> Result<Reputation, String> {
-    let client = reqwest::blocking::Client::builder().timeout(TIMEOUT).build().map_err(|e| format!("Не удалось подготовить запрос: {e}"))?;
+    let client = reqwest::blocking::Client::builder().timeout(TIMEOUT).build().map_err(|e| trs(format!("Не удалось подготовить запрос: {e}"), format!("Could not prepare the request: {e}")))?;
     let response = client.get(format!("{API_URL}/{sha256}")).header("x-apikey", api_key).send().map_err(|e| {
         if e.is_timeout() {
-            "VirusTotal не ответил вовремя. Повторите попытку.".to_string()
+            tr("VirusTotal не ответил вовремя. Повторите попытку.", "VirusTotal did not respond in time. Please try again.").to_string()
         } else {
-            format!("Не удалось связаться с VirusTotal: {e}")
+            trs(format!("Не удалось связаться с VirusTotal: {e}"), format!("Could not reach VirusTotal: {e}"))
         }
     })?;
     match response.status().as_u16() {
         200 => {
-            let body: Value = response.json().map_err(|e| format!("Непонятный ответ VirusTotal: {e}"))?;
+            let body: Value = response.json().map_err(|e| trs(format!("Непонятный ответ VirusTotal: {e}"), format!("Unexpected response from VirusTotal: {e}")))?;
             Ok(parse(sha256, &body, now))
         }
         404 => Ok(Reputation { sha256: sha256.to_string(), known: false, malicious: 0, suspicious: 0, total: 0, label: None, analysed_at: None, checked_at: now }),
-        401 | 403 => Err("Ключ VirusTotal недействителен. Проверьте его в настройках.".to_string()),
-        429 => Err("Лимит запросов VirusTotal исчерпан: бесплатный ключ даёт 4 проверки в минуту и 500 в день.".to_string()),
-        status => Err(format!("VirusTotal ответил ошибкой {status}.")),
+        401 | 403 => Err(tr("Ключ VirusTotal недействителен. Проверьте его в настройках.", "The VirusTotal key is not valid. Check it in the settings.").to_string()),
+        429 => Err(tr("Лимит запросов VirusTotal исчерпан: бесплатный ключ даёт 4 проверки в минуту и 500 в день.", "The VirusTotal request limit has been reached: a free key allows 4 lookups per minute and 500 per day.").to_string()),
+        status => Err(trs(format!("VirusTotal ответил ошибкой {status}."), format!("VirusTotal returned error {status}."))),
     }
 }
 
@@ -76,11 +78,11 @@ fn request(api_key: &str, sha256: &str, now: u64) -> Result<Reputation, String> 
 pub fn lookup(api_key: &str, sha256: &str, now: u64) -> Result<Reputation, String> {
     let sha256 = sha256.trim().to_lowercase();
     if !is_sha256(&sha256) {
-        return Err("Это не SHA-256.".to_string());
+        return Err(tr("Это не SHA-256.", "This is not a SHA-256.").to_string());
     }
     // The blocking HTTP client must not run on the async runtime's threads (see `ai::explain`).
     std::thread::scope(|scope| scope.spawn(|| request(api_key, &sha256, now)).join())
-        .unwrap_or_else(|_| Err("Внутренняя ошибка при обращении к VirusTotal.".to_string()))
+        .unwrap_or_else(|_| Err(tr("Внутренняя ошибка при обращении к VirusTotal.", "Internal error while contacting VirusTotal.").to_string()))
 }
 
 #[cfg(test)]

@@ -1,47 +1,56 @@
 # DefenseR
 
-Умная надстройка над Microsoft Defender для домашнего компьютера с Windows: следит за процессами, сетью, автозагрузкой и новыми файлами, объясняет находки простым языком и предлагает действия — всегда с подтверждением пользователя.
+English · [Русский](README.ru.md)
 
-DefenseR не заменяет антивирус и не содержит драйвера ядра. Это личный проект на ранней стадии.
+A smart layer on top of Microsoft Defender for a home Windows PC. It watches processes, the network, startup entries and new files, explains what it finds in plain language and offers actions, always with your confirmation.
 
-## Что умеет
+DefenseR does not replace an antivirus and has no kernel driver. It is a personal project at an early stage.
 
-- **Обзор и инциденты.** Правила замечают отключённую защиту, запуск из временных папок, новые записи автозагрузки и другое подозрительное.
-- **Проверка файлов.** Локальная модель (LightGBM, обучена на EMBER 2018) оценивает программы по их строению, не запуская их, и проверяет цифровую подпись. Новые программы в «Загрузках», на рабочем столе, во временной папке и на флешках проверяются сами. Файл можно дополнительно проверить по VirusTotal (отправляется только SHA-256).
-- **Цепочки событий.** Если недавно появившийся файл без подписи был запущен, прописался в автозагрузку и вышел в сеть, это показывается одной историей с хронологией, а не отдельными срабатываниями.
-- **Профиль поведения.** DefenseR запоминает, какие программы обычно выходят в сеть, и сообщает о новых.
-- **Реакции.** Завершить процесс, убрать файл в карантин, запретить программе выход в сеть, отключить запись автозагрузки. Всё обратимо и выполняется только по команде.
-- **Объяснения от Claude.** По кнопке инцидент разбирается простым языком. Нужен собственный ключ Anthropic API.
-- **Работа в фоне.** Значок в области уведомлений, уведомления Windows, запуск вместе с системой, автообновление.
+## What it does
 
-## Установка
+- **Overview and incidents.** Rules notice disabled protection, programs running from temp folders, new startup entries and other suspicious things.
+- **File scan.** A local model (LightGBM, trained on EMBER 2018) rates programs by their structure without running them, and checks the digital signature. New programs in Downloads, on the desktop, in the temp folder and on removable drives are checked on their own. A file can also be looked up on VirusTotal (only its SHA-256 is sent).
+- **Chains of events.** When a recently arrived unsigned file was run, added itself to startup and went online, that is shown as one story with a timeline instead of separate alerts.
+- **Behaviour profile.** DefenseR learns which programs normally go online and reports new ones.
+- **Responses.** End a process, quarantine a file, block a program's network access, turn a startup entry off. Everything is reversible and happens only on your command.
+- **Explanations from Claude.** On request, an incident is explained in plain language. You need your own Anthropic API key.
+- **Running in the background.** A notification-area icon, Windows notifications, start with Windows, automatic updates.
+- **Two languages.** English and Russian, switched in the settings.
 
-Скачайте `DefenseR_x.y.z_x64-setup.exe` со страницы [выпусков](../../releases/latest) и запустите. Установщик не подписан сертификатом издателя, поэтому SmartScreen покажет предупреждение: «Подробнее» → «Выполнить в любом случае».
+## Install
 
-Дальше программа обновляется сама. Обновления принимаются только с подписью, которая проверяется встроенным в программу открытым ключом.
+Download `DefenseR_x.y.z_x64-setup.exe` from the [releases](../../releases/latest) page and run it. The installer is not signed with a publisher certificate, so SmartScreen shows a warning: "More info" → "Run anyway".
 
-## Приватность
+After that the app updates itself. An update is accepted only if its signature matches the public key built into the app.
 
-- Файлы, список процессов и сетевые соединения не покидают компьютер.
-- В VirusTotal уходит только SHA-256 файла: по кнопке или, если включить в настройках, автоматически для файлов, которые модель сочла вредоносными.
-- В Anthropic уходит только текст инцидента, для которого вы нажали «Объяснить с помощью ИИ»; путь к папке профиля заменяется на `%USERPROFILE%`.
-- Ключ API хранится в диспетчере учётных данных Windows, а не в файлах программы.
-- За обновлениями программа обращается к GitHub.
+## Privacy
 
-## Сборка из исходников
+- Files, the process list and network connections never leave the computer.
+- VirusTotal receives only a file's SHA-256: when you press the button or, if you turn it on in the settings, automatically for files the model calls malicious.
+- Anthropic receives only the text of an incident you pressed "Explain with AI" on; the path to your profile folder is replaced with `%USERPROFILE%`.
+- API keys are kept in Windows Credential Manager, not in the app's files.
+- The app contacts GitHub to look for updates.
 
-Нужны Node.js, Rust и [зависимости Tauri](https://tauri.app/start/prerequisites/) для Windows.
+## Building from source
+
+You need Node.js, Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for Windows.
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Обученная модель лежит в `src-tauri/model`. Скрипты для её переобучения — в `ml/`; набор данных EMBER в репозиторий не входит.
+The trained model is in `src-tauri/model`. The scripts to retrain it are in `ml/`; the EMBER dataset is not part of the repository.
 
-## Выпуск новой версии
+Tests run on every commit in GitHub Actions; releases are built and signed on the maintainer's machine.
 
-1. Поднять версию в `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` и `package.json`, закоммитить.
-2. Запустить `npm run release -- "Что нового"`.
+## Releasing a new version
 
-Скрипт собирает установщик, подписывает его ключом из `~/.tauri/defenser.key` и публикует выпуск на GitHub. Закрытый ключ в репозиторий не попадает; без него выпустить обновление для уже установленных копий нельзя.
+1. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`, and commit.
+2. Run `npm run release -- "What's new"`.
+
+The script builds the installer, signs it with the key in `~/.tauri/defenser.key` and publishes the release on GitHub. The private key never enters the repository; without it, no update can be released for copies that are already installed.
+
+## License
+
+[MIT](LICENSE)

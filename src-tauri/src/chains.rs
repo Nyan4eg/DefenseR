@@ -13,6 +13,7 @@ use crate::collectors::network::Connection;
 use crate::collectors::processes::ProcessInfo;
 use crate::downloads::{self, Arrival, Place};
 use crate::incidents::{AutostartRef, Evidence, Finding, Severity, Target, TimelineEvent};
+use crate::lang::{tr, trs};
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::{ScanResult, Verdict};
 
@@ -100,21 +101,37 @@ impl Track {
         match &self.parent {
             Some(parent) => events.push(TimelineEvent {
                 at: self.arrived_at,
-                text: format!("Запущен программой {}, которая недавно появилась {located}", file_name(parent)),
+                text: trs(
+                    format!("Запущен программой {}, которая недавно появилась {located}", file_name(parent)),
+                    format!("Started by {}, a program that recently appeared {located}", file_name(parent)),
+                ),
             }),
             None => {
-                let from = self.source.as_ref().map(|host| format!(", скачан с {host}")).unwrap_or_default();
-                events.push(TimelineEvent { at: self.arrived_at, text: format!("Файл появился {located}{from}") });
+                let from = self
+                    .source
+                    .as_ref()
+                    .map(|host| trs(format!(", скачан с {host}"), format!(", downloaded from {host}")))
+                    .unwrap_or_default();
+                events.push(TimelineEvent {
+                    at: self.arrived_at,
+                    text: trs(format!("Файл появился {located}{from}"), format!("The file appeared {located}{from}")),
+                });
                 if let Some(at) = self.ran_at {
-                    events.push(TimelineEvent { at, text: "Запущен".to_string() });
+                    events.push(TimelineEvent { at, text: tr("Запущен", "Run").to_string() });
                 }
             }
         }
         if let Some(entry) = &self.autostart {
-            events.push(TimelineEvent { at: entry.at, text: format!("Добавлен в автозагрузку: запись «{}»", entry.name) });
+            events.push(TimelineEvent {
+                at: entry.at,
+                text: trs(format!("Добавлен в автозагрузку: запись «{}»", entry.name), format!("Added to startup: entry “{}”", entry.name)),
+            });
         }
         if let Some(online) = &self.network {
-            events.push(TimelineEvent { at: online.at, text: format!("Вышел в интернет: соединение с {}", online.address) });
+            events.push(TimelineEvent {
+                at: online.at,
+                text: trs(format!("Вышел в интернет: соединение с {}", online.address), format!("Went online: connection to {}", online.address)),
+            });
         }
         events.sort_by_key(|event| event.at);
         events
@@ -138,49 +155,64 @@ impl Track {
         let name = file_name(&self.path);
         let mut steps = Vec::new();
         match &self.parent {
-            Some(parent) => steps.push(format!("запущен недавно появившимся {}", file_name(parent))),
+            Some(parent) => steps.push(trs(
+                format!("запущен недавно появившимся {}", file_name(parent)),
+                format!("started by the recently arrived {}", file_name(parent)),
+            )),
             None => {
-                steps.push(format!("появился {}", downloads::located(self.place)));
+                let located = downloads::located(self.place);
+                steps.push(trs(format!("появился {located}"), format!("appeared {located}")));
                 if self.ran_at.is_some() {
-                    steps.push("запущен".to_string());
+                    steps.push(tr("запущен", "was run").to_string());
                 }
             }
         }
         if self.autostart.is_some() {
-            steps.push("прописан в автозагрузку".to_string());
+            steps.push(tr("прописан в автозагрузку", "added to startup").to_string());
         }
         if self.network.is_some() {
-            steps.push("выходит в интернет".to_string());
+            steps.push(tr("выходит в интернет", "goes online").to_string());
         }
         let model = match result.verdict {
-            Verdict::Malicious => " Локальная модель к тому же считает файл похожим на вредоносный.",
-            Verdict::Suspicious => " Локальная модель к тому же считает файл подозрительным.",
+            Verdict::Malicious => tr(
+                " Локальная модель к тому же считает файл похожим на вредоносный.",
+                " The local model also thinks the file looks like malware.",
+            ),
+            Verdict::Suspicious => tr(
+                " Локальная модель к тому же считает файл подозрительным.",
+                " The local model also thinks the file looks suspicious.",
+            ),
             _ => "",
         };
 
-        let mut evidence = vec![("Файл", name.to_string()), ("Путь", self.path.clone())];
+        let mut evidence = vec![(tr("Файл", "File"), name.to_string()), (tr("Путь", "Path"), self.path.clone())];
         if let Some(parent) = &self.parent {
-            evidence.push(("Запущен программой", parent.clone()));
+            evidence.push((tr("Запущен программой", "Started by"), parent.clone()));
         }
         if let Some(entry) = &self.autostart {
-            evidence.push(("Автозагрузка", format!(r"{}\{}", entry.source, entry.name)));
+            evidence.push((tr("Автозагрузка", "Startup"), format!(r"{}\{}", entry.source, entry.name)));
         }
         if let Some(online) = &self.network {
-            evidence.push(("Соединение", online.address.clone()));
+            evidence.push((tr("Соединение", "Connection"), online.address.clone()));
         }
         if let Some(score) = result.score {
-            evidence.push(("Оценка модели", format!("{:.1}%", score * 100.0)));
+            evidence.push((tr("Оценка модели", "Model score"), format!("{:.1}%", score * 100.0)));
         }
-        evidence.push(("Цифровая подпись", downloads::signature_text(status).to_string()));
+        evidence.push((tr("Цифровая подпись", "Digital signature"), downloads::signature_text(status).to_string()));
         evidence.push(("SHA-256", result.sha256.clone().unwrap_or_default()));
 
         Some(Finding {
             id: format!("chain|{}", self.path.to_lowercase()),
             rule: "chain",
             severity,
-            title: format!("Файл {name}: {}", steps.join(", ")),
-            summary: format!(
-                "Несколько событий вокруг одного файла складываются в цепочку, по которой обычно закрепляются нежелательные программы, а действительной цифровой подписи у файла нет.{model} По отдельности каждое из этих событий обычно, вместе они заслуживают внимания. Точно так же ведут себя и программы без подписи, которые вы поставили сами: если это ваш случай, нажмите «Доверять файлу»."
+            title: trs(format!("Файл {name}: {}", steps.join(", ")), format!("File {name}: {}", steps.join(", "))),
+            summary: trs(
+                format!(
+                    "Несколько событий вокруг одного файла складываются в цепочку, по которой обычно закрепляются нежелательные программы, а действительной цифровой подписи у файла нет.{model} По отдельности каждое из этих событий обычно, вместе они заслуживают внимания. Точно так же ведут себя и программы без подписи, которые вы поставили сами: если это ваш случай, нажмите «Доверять файлу»."
+                ),
+                format!(
+                    "Several events around one file add up to the chain by which unwanted programs usually settle on a computer, and the file has no valid digital signature.{model} Each of these events is ordinary on its own; together they deserve attention. Unsigned programs that you installed yourself behave in exactly the same way: if that is the case here, click “Trust file”."
+                ),
             ),
             evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
             target: Some(Target {

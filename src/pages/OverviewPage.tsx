@@ -4,6 +4,7 @@ import { Activity, CircleCheck, CircleHelp, Cpu, Globe, MemoryStick, TriangleAle
 import { Card, PageHeader } from "../components/ui";
 import { ScoreRing } from "../components/ScoreRing";
 import { formatBytes, formatUptime, type Connection, type Overview, type ProcessInfo } from "../lib/api";
+import { tr } from "../lib/i18n";
 import type { Assessment, CheckStatus } from "../lib/score";
 
 export interface Sample {
@@ -46,15 +47,26 @@ export function OverviewPage({ overview, processes, connections, assessment, his
   return (
     <>
       <PageHeader
-        title="Обзор"
-        subtitle={overview ? `${overview.hostName} · ${overview.osVersion} · работает ${formatUptime(overview.uptimeSecs)}` : "Сбор данных…"}
+        title={tr("Обзор", "Overview")}
+        subtitle={
+          overview
+            ? tr(
+                `${overview.hostName} · ${overview.osVersion} · работает ${formatUptime(overview.uptimeSecs)}`,
+                `${overview.hostName} · ${overview.osVersion} · up for ${formatUptime(overview.uptimeSecs)}`,
+              )
+            : tr("Сбор данных…", "Collecting data…")
+        }
       />
 
       <div className="grid grid-cols-[auto_1fr] gap-4">
         <Card className="flex flex-col items-center justify-center px-10 py-8">
           <ScoreRing score={assessment.score} />
           <div className="mt-5 text-sm text-white/50">
-            {assessment.score == null ? "Проверяем состояние защиты" : problems === 0 ? "Замечаний нет" : `Замечаний: ${problems}`}
+            {assessment.score == null
+              ? tr("Проверяем состояние защиты", "Checking the protection status")
+              : problems === 0
+                ? tr("Замечаний нет", "No issues")
+                : tr(`Замечаний: ${problems}`, `Issues: ${problems}`)}
           </div>
         </Card>
 
@@ -72,35 +84,42 @@ export function OverviewPage({ overview, processes, connections, assessment, his
       <div className="mt-4 grid grid-cols-4 gap-4">
         <StatTile
           icon={<Cpu size={14} />}
-          label="Процессор"
+          label={tr("Процессор", "CPU")}
           value={overview ? `${overview.cpuUsage.toFixed(0)}%` : "—"}
-          hint="Загрузка сейчас"
+          hint={tr("Загрузка сейчас", "Current load")}
         />
         <StatTile
           icon={<MemoryStick size={14} />}
-          label="Память"
+          label={tr("Память", "Memory")}
           value={overview ? `${memoryPercent.toFixed(0)}%` : "—"}
-          hint={overview ? `${formatBytes(overview.memoryUsed)} из ${formatBytes(overview.memoryTotal)}` : ""}
+          hint={
+            overview
+              ? tr(
+                  `${formatBytes(overview.memoryUsed)} из ${formatBytes(overview.memoryTotal)}`,
+                  `${formatBytes(overview.memoryUsed)} of ${formatBytes(overview.memoryTotal)}`,
+                )
+              : ""
+          }
         />
         <StatTile
           icon={<Activity size={14} />}
-          label="Процессы"
+          label={tr("Процессы", "Processes")}
           value={processes ? String(processes.length) : "—"}
-          hint="Запущено сейчас"
+          hint={tr("Запущено сейчас", "Running now")}
         />
         <StatTile
           icon={<Globe size={14} />}
-          label="Внешние соединения"
+          label={tr("Внешние соединения", "External connections")}
           value={external != null ? String(external) : "—"}
-          hint={connections ? `Всего сокетов: ${connections.length}` : ""}
+          hint={connections ? tr(`Всего сокетов: ${connections.length}`, `Sockets in total: ${connections.length}`) : ""}
         />
       </div>
 
       <Card className="mt-4 p-4">
         <div className="mb-2 flex items-center gap-4 text-xs text-white/50">
-          <span>Нагрузка за последние 2 минуты</span>
-          <span className="ml-auto flex items-center gap-1.5"><i className="size-2 rounded-full bg-emerald-400" />Процессор</span>
-          <span className="flex items-center gap-1.5"><i className="size-2 rounded-full bg-cyan-400" />Память</span>
+          <span>{tr("Нагрузка за последние 2 минуты", "Load over the last 2 minutes")}</span>
+          <span className="ml-auto flex items-center gap-1.5"><i className="size-2 rounded-full bg-emerald-400" />{tr("Процессор", "CPU")}</span>
+          <span className="flex items-center gap-1.5"><i className="size-2 rounded-full bg-cyan-400" />{tr("Память", "Memory")}</span>
         </div>
         <div className="h-36">
           <ResponsiveContainer width="100%" height="100%">
@@ -117,7 +136,7 @@ export function OverviewPage({ overview, processes, connections, assessment, his
               </defs>
               <YAxis domain={[0, 100]} hide />
               <Tooltip
-                formatter={(value, name) => [`${Number(value).toFixed(0)}%`, name === "cpu" ? "Процессор" : "Память"]}
+                formatter={(value, name) => [`${Number(value).toFixed(0)}%`, name === "cpu" ? tr("Процессор", "CPU") : tr("Память", "Memory")]}
                 labelFormatter={() => ""}
                 contentStyle={{ background: "#11161d", border: "1px solid rgb(255 255 255 / 0.1)", borderRadius: 10, fontSize: 12 }}
               />

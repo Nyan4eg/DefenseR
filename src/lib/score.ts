@@ -1,4 +1,5 @@
 import type { AutostartEntry, ProcessInfo, ProtectionStatus } from "./api";
+import { tr } from "./i18n";
 
 export type CheckStatus = "ok" | "warn" | "unknown";
 
@@ -37,47 +38,49 @@ export function assess(
   const flaggedAutostart = autostart?.filter((e) => e.flags.length > 0).length ?? null;
   const flaggedProcesses = processes?.filter((p) => p.flags.length > 0).length ?? null;
 
+  const noData = tr("Нет данных", "No data");
+
   const weighted: [number, Check][] = [
     [30, {
       id: "realtime",
-      label: "Защита в реальном времени",
-      detail: protection?.realtime == null ? "Нет данных от Microsoft Defender" : protection.realtime ? "Включена" : "Отключена",
+      label: tr("Защита в реальном времени", "Real-time protection"),
+      detail: protection?.realtime == null ? tr("Нет данных от Microsoft Defender", "No data from Microsoft Defender") : protection.realtime ? tr("Включена", "On") : tr("Отключена", "Off"),
       status: status(protection?.realtime),
     }],
     [15, {
       id: "antivirus",
-      label: "Антивирус Microsoft Defender",
-      detail: protection?.antivirus == null ? "Нет данных" : protection.antivirus ? "Работает" : "Не работает",
+      label: tr("Антивирус Microsoft Defender", "Microsoft Defender Antivirus"),
+      detail: protection?.antivirus == null ? noData : protection.antivirus ? tr("Работает", "Running") : tr("Не работает", "Not running"),
       status: status(protection?.antivirus),
     }],
     [20, {
       id: "firewall",
-      label: "Брандмауэр Windows",
-      detail: firewallOn == null ? "Нет данных" : firewallOn ? "Включён для всех профилей" : `Отключён: ${firewallOff.join(", ")}`,
+      label: tr("Брандмауэр Windows", "Windows Firewall"),
+      detail: firewallOn == null ? noData : firewallOn ? tr("Включён для всех профилей", "On for all profiles") : tr(`Отключён: ${firewallOff.join(", ")}`, `Off: ${firewallOff.join(", ")}`),
       status: status(firewallOn),
     }],
     [10, {
       id: "signatures",
-      label: "Антивирусные базы",
-      detail: age == null ? "Нет данных" : age === 0 ? "Обновлены сегодня" : `Обновлены ${age} дн. назад`,
+      label: tr("Антивирусные базы", "Virus definitions"),
+      detail: age == null ? noData : age === 0 ? tr("Обновлены сегодня", "Updated today") : tr(`Обновлены ${age} дн. назад`, `Updated ${age} ${age === 1 ? "day" : "days"} ago`),
       status: status(age == null ? null : age <= SIGNATURE_MAX_AGE_DAYS),
     }],
     [5, {
       id: "tamper",
-      label: "Защита от подделки",
-      detail: protection?.tamper == null ? "Нет данных" : protection.tamper ? "Включена" : "Отключена",
+      label: tr("Защита от подделки", "Tamper protection"),
+      detail: protection?.tamper == null ? noData : protection.tamper ? tr("Включена", "On") : tr("Отключена", "Off"),
       status: status(protection?.tamper),
     }],
     [10, {
       id: "autostart",
-      label: "Автозагрузка",
-      detail: flaggedAutostart == null ? "Нет данных" : flaggedAutostart === 0 ? "Подозрительных записей нет" : `Записей, требующих внимания: ${flaggedAutostart}`,
+      label: tr("Автозагрузка", "Startup"),
+      detail: flaggedAutostart == null ? noData : flaggedAutostart === 0 ? tr("Подозрительных записей нет", "No suspicious entries") : tr(`Записей, требующих внимания: ${flaggedAutostart}`, `Entries that need attention: ${flaggedAutostart}`),
       status: status(flaggedAutostart == null ? null : flaggedAutostart === 0),
     }],
     [10, {
       id: "processes",
-      label: "Запущенные процессы",
-      detail: flaggedProcesses == null ? "Нет данных" : flaggedProcesses === 0 ? "Процессов из временных папок нет" : `Процессов из временных папок: ${flaggedProcesses}`,
+      label: tr("Запущенные процессы", "Running processes"),
+      detail: flaggedProcesses == null ? noData : flaggedProcesses === 0 ? tr("Процессов из временных папок нет", "No processes from temp folders") : tr(`Процессов из временных папок: ${flaggedProcesses}`, `Processes from temp folders: ${flaggedProcesses}`),
       status: status(flaggedProcesses == null ? null : flaggedProcesses === 0),
     }],
   ];

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::lock;
+use crate::lang::{tr, trs};
 use model::{Model, ModelInfo};
 use signature::Signature;
 
@@ -111,9 +112,9 @@ impl Scanner {
 
     fn analyze(&self, path: &Path, result: &mut ScanResult) -> Result<Verdict, String> {
         if result.size > MAX_FILE_SIZE {
-            return Err("Файл больше 256 МБ, проверка пропущена.".to_string());
+            return Err(tr("Файл больше 256 МБ, проверка пропущена.", "The file is larger than 256 MB, so the check was skipped.").to_string());
         }
-        let bytes = std::fs::read(path).map_err(|e| format!("Не удалось прочитать файл: {e}"))?;
+        let bytes = std::fs::read(path).map_err(|e| trs(format!("Не удалось прочитать файл: {e}"), format!("Could not read the file: {e}")))?;
         result.sha256 = Some(Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect());
 
         let extracted = features::extract(&bytes);

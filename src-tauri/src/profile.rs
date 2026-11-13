@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::collectors::network::Connection;
 use crate::collectors::processes::ProcessInfo;
 use crate::incidents::{Evidence, Finding, Severity, Target};
+use crate::lang::{tr, trs};
 
 /// Monitoring time before the profile is trusted and anomalies are reported.
 pub const LEARNING_SECS: u64 = 2 * 60 * 60;
@@ -142,7 +143,7 @@ impl Profile {
             // An unsigned program doing something new deserves a closer look than a signed one.
             let severity = if has_signature(exe) == Some(false) { Severity::Medium } else { Severity::Low };
             let evidence = |extra: Option<(&str, String)>| {
-                let mut pairs = vec![("Процесс", process.name.clone()), ("PID", process.pid.to_string()), ("Путь", exe.clone())];
+                let mut pairs = vec![(tr("Процесс", "Process"), process.name.clone()), ("PID", process.pid.to_string()), (tr("Путь", "Path"), exe.clone())];
                 pairs.extend(extra);
                 pairs.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect()
             };
@@ -154,14 +155,22 @@ impl Profile {
                     rule: "behavior-network",
                     severity,
                     title: if new_program {
-                        format!("Новая программа {} вышла в интернет", process.name)
+                        trs(format!("Новая программа {} вышла в интернет", process.name), format!("New program {} went online", process.name))
                     } else {
-                        format!("{} впервые вышла в интернет", process.name)
+                        trs(format!("{} впервые вышла в интернет", process.name), format!("{} went online for the first time", process.name))
                     },
                     summary: if new_program {
-                        "Этой программы не было, пока DefenseR изучал компьютер, и она соединяется с адресами в интернете. Так ведёт себя любая только что установленная программа, но и только что попавшая на компьютер вредоносная тоже.".to_string()
+                        tr(
+                            "Этой программы не было, пока DefenseR изучал компьютер, и она соединяется с адресами в интернете. Так ведёт себя любая только что установленная программа, но и только что попавшая на компьютер вредоносная тоже.",
+                            "This program was not there while DefenseR was learning the computer, and it connects to addresses on the internet. Any newly installed program behaves this way, but so does malware that has just reached the computer.",
+                        )
+                        .to_string()
                     } else {
-                        "Программа запускалась и раньше, но до сих пор не соединялась с интернетом. Причиной может быть обновление или новая функция; так же проявляет себя и внедрённый в программу посторонний код.".to_string()
+                        tr(
+                            "Программа запускалась и раньше, но до сих пор не соединялась с интернетом. Причиной может быть обновление или новая функция; так же проявляет себя и внедрённый в программу посторонний код.",
+                            "The program has run before, but until now it did not connect to the internet. The cause may be an update or a new feature; foreign code planted in a program shows itself the same way.",
+                        )
+                        .to_string()
                     },
                     evidence: evidence(None),
                     target: Target::process(process.pid, exe),
@@ -175,9 +184,16 @@ impl Profile {
                         id: format!("behavior-listening|{key}"),
                         rule: "behavior-listening",
                         severity,
-                        title: format!("{} начала принимать подключения из сети", process.name),
-                        summary: "Программа открыла порт, доступный другим компьютерам, чего раньше не делала. Так работают серверы, игры и средства удалённого доступа — в том числе установленные без вашего ведома.".to_string(),
-                        evidence: evidence(Some(("Порт", port.to_string()))),
+                        title: trs(
+                            format!("{} начала принимать подключения из сети", process.name),
+                            format!("{} started accepting connections from the network", process.name),
+                        ),
+                        summary: tr(
+                            "Программа открыла порт, доступный другим компьютерам, чего раньше не делала. Так работают серверы, игры и средства удалённого доступа — в том числе установленные без вашего ведома.",
+                            "The program opened a port that other computers can reach, which it had not done before. Servers, games and remote access tools work this way, including ones installed without your knowledge.",
+                        )
+                        .to_string(),
+                        evidence: evidence(Some((tr("Порт", "Port"), port.to_string()))),
                         target: Target::process(process.pid, exe),
                         timeline: Vec::new(),
                     });

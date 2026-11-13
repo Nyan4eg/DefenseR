@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { tr } from "../lib/i18n";
 
 const SIZE = 220;
 const STROKE = 14;
@@ -6,10 +7,10 @@ const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 function verdict(score: number | null): { text: string; from: string; to: string } {
-  if (score == null) return { text: "Сбор данных…", from: "#64748b", to: "#94a3b8" };
-  if (score >= 80) return { text: "Защищено", from: "#34d399", to: "#22d3ee" };
-  if (score >= 50) return { text: "Есть риски", from: "#fbbf24", to: "#fb923c" };
-  return { text: "Под угрозой", from: "#fb7185", to: "#f43f5e" };
+  if (score == null) return { text: tr("Сбор данных…", "Collecting data…"), from: "#64748b", to: "#94a3b8" };
+  if (score >= 80) return { text: tr("Защищено", "Protected"), from: "#34d399", to: "#22d3ee" };
+  if (score >= 50) return { text: tr("Есть риски", "Some risks"), from: "#fbbf24", to: "#fb923c" };
+  return { text: tr("Под угрозой", "At risk"), from: "#fb7185", to: "#f43f5e" };
 }
 
 export function ScoreRing({ score }: { score: number | null }) {

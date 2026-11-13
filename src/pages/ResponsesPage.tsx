@@ -2,29 +2,30 @@ import { useState, type ReactNode } from "react";
 import { BadgeCheck, Ban, History, Lock, Rocket } from "lucide-react";
 import { Card, ConfirmDialog, Loading, PageHeader } from "../components/ui";
 import { call, formatBytes, formatTime, usePolling, type ResponseLogEntry, type ResponsesState, type TrustState } from "../lib/api";
+import { tr } from "../lib/i18n";
 
 const ACTION_LABELS: Record<ResponseLogEntry["action"], string> = {
-  kill: "Процесс завершён",
-  quarantine: "Файл помещён в карантин",
-  restore: "Файл возвращён из карантина",
-  delete: "Файл удалён из карантина",
-  block: "Выход в сеть заблокирован",
-  unblock: "Блокировка сети снята",
-  "autostart-disable": "Запись убрана из автозагрузки",
-  "autostart-enable": "Запись возвращена в автозагрузку",
-  "autostart-forget": "Отключённая запись удалена",
+  kill: tr("Процесс завершён", "Process ended"),
+  quarantine: tr("Файл помещён в карантин", "File moved to quarantine"),
+  restore: tr("Файл возвращён из карантина", "File restored from quarantine"),
+  delete: tr("Файл удалён из карантина", "File deleted from quarantine"),
+  block: tr("Выход в сеть заблокирован", "Network access blocked"),
+  unblock: tr("Блокировка сети снята", "Network block removed"),
+  "autostart-disable": tr("Запись убрана из автозагрузки", "Entry removed from startup"),
+  "autostart-enable": tr("Запись возвращена в автозагрузку", "Entry restored to startup"),
+  "autostart-forget": tr("Отключённая запись удалена", "Disabled entry deleted"),
 };
 
 const FAILED_LABELS: Record<ResponseLogEntry["action"], string> = {
-  kill: "Не удалось завершить процесс",
-  quarantine: "Не удалось поместить файл в карантин",
-  restore: "Не удалось вернуть файл",
-  delete: "Не удалось удалить файл",
-  block: "Не удалось заблокировать выход в сеть",
-  unblock: "Не удалось снять блокировку",
-  "autostart-disable": "Не удалось убрать запись из автозагрузки",
-  "autostart-enable": "Не удалось вернуть запись в автозагрузку",
-  "autostart-forget": "Не удалось удалить отключённую запись",
+  kill: tr("Не удалось завершить процесс", "Could not end the process"),
+  quarantine: tr("Не удалось поместить файл в карантин", "Could not move the file to quarantine"),
+  restore: tr("Не удалось вернуть файл", "Could not restore the file"),
+  delete: tr("Не удалось удалить файл", "Could not delete the file"),
+  block: tr("Не удалось заблокировать выход в сеть", "Could not block network access"),
+  unblock: tr("Не удалось снять блокировку", "Could not remove the block"),
+  "autostart-disable": tr("Не удалось убрать запись из автозагрузки", "Could not remove the entry from startup"),
+  "autostart-enable": tr("Не удалось вернуть запись в автозагрузку", "Could not restore the entry to startup"),
+  "autostart-forget": tr("Не удалось удалить отключённую запись", "Could not delete the disabled entry"),
 };
 
 interface Pending {
@@ -57,7 +58,7 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
   if (!responses) {
     return (
       <>
-        <PageHeader title="Реакции" subtitle="Карантин, блокировки сети, автозагрузка и журнал действий" />
+        <PageHeader title={tr("Реакции", "Responses")} subtitle={tr("Карантин, блокировки сети, автозагрузка и журнал действий", "Quarantine, network blocks, startup and the action log")} />
         <Loading />
       </>
     );
@@ -80,10 +81,10 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
 
   return (
     <>
-      <PageHeader title="Реакции" subtitle="Карантин, блокировки сети, отключённая автозагрузка и журнал действий. DefenseR ничего не делает сам — только по вашей команде" />
+      <PageHeader title={tr("Реакции", "Responses")} subtitle={tr("Карантин, блокировки сети, отключённая автозагрузка и журнал действий. DefenseR ничего не делает сам — только по вашей команде", "Quarantine, network blocks, disabled startup entries and the action log. DefenseR does nothing on its own — only at your command")} />
       {error && <div className="mb-4 rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-2.5 text-sm text-rose-200">{error}</div>}
 
-      <Section icon={Lock} title={`Карантин · ${responses.quarantine.length}`} empty={responses.quarantine.length === 0 ? "В карантине пусто" : null}>
+      <Section icon={Lock} title={tr(`Карантин · ${responses.quarantine.length}`, `Quarantine · ${responses.quarantine.length}`)} empty={responses.quarantine.length === 0 ? tr("В карантине пусто", "Quarantine is empty") : null}>
         {responses.quarantine.map((item) => (
           <div key={item.id} className={row}>
             <div className="min-w-0 flex-1">
@@ -100,14 +101,14 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                 setPending({
                   command: "restore_file",
                   id: item.id,
-                  title: `Вернуть ${item.name}?`,
-                  body: `Файл вернётся в ${item.originalPath} и снова сможет запускаться.`,
-                  confirmLabel: "Вернуть",
+                  title: tr(`Вернуть ${item.name}?`, `Restore ${item.name}?`),
+                  body: tr(`Файл вернётся в ${item.originalPath} и снова сможет запускаться.`, `The file will go back to ${item.originalPath} and will be able to run again.`),
+                  confirmLabel: tr("Вернуть", "Restore"),
                   danger: false,
                 })
               }
             >
-              Вернуть
+              {tr("Вернуть", "Restore")}
             </button>
             <button
               className={`${button} hover:bg-rose-400/15 hover:text-rose-200`}
@@ -115,20 +116,20 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                 setPending({
                   command: "delete_quarantined",
                   id: item.id,
-                  title: `Удалить ${item.name} навсегда?`,
-                  body: "Файл будет удалён без возможности восстановления.",
-                  confirmLabel: "Удалить навсегда",
+                  title: tr(`Удалить ${item.name} навсегда?`, `Delete ${item.name} permanently?`),
+                  body: tr("Файл будет удалён без возможности восстановления.", "The file will be deleted and cannot be recovered."),
+                  confirmLabel: tr("Удалить навсегда", "Delete permanently"),
                   danger: true,
                 })
               }
             >
-              Удалить
+              {tr("Удалить", "Delete")}
             </button>
           </div>
         ))}
       </Section>
 
-      <Section icon={Ban} title={`Блокировки сети · ${responses.blocks.length}`} empty={responses.blocks.length === 0 ? "Ни одна программа не заблокирована" : null}>
+      <Section icon={Ban} title={tr(`Блокировки сети · ${responses.blocks.length}`, `Network blocks · ${responses.blocks.length}`)} empty={responses.blocks.length === 0 ? tr("Ни одна программа не заблокирована", "No programs are blocked") : null}>
         {responses.blocks.map((block) => (
           <div key={block.id} className={row}>
             <div className="min-w-0 flex-1">
@@ -142,14 +143,14 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                 setPending({
                   command: "unblock_program",
                   id: block.id,
-                  title: `Разрешить ${block.name} выход в сеть?`,
-                  body: "Правило будет удалено из брандмауэра Windows. Windows попросит подтвердить действие от имени администратора.",
-                  confirmLabel: "Снять блокировку",
+                  title: tr(`Разрешить ${block.name} выход в сеть?`, `Allow ${block.name} to access the network?`),
+                  body: tr("Правило будет удалено из брандмауэра Windows. Windows попросит подтвердить действие от имени администратора.", "The rule will be removed from Windows Firewall. Windows will ask you to confirm the action as an administrator."),
+                  confirmLabel: tr("Снять блокировку", "Remove block"),
                   danger: false,
                 })
               }
             >
-              Снять блокировку
+              {tr("Снять блокировку", "Remove block")}
             </button>
           </div>
         ))}
@@ -157,8 +158,8 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
 
       <Section
         icon={Rocket}
-        title={`Отключённая автозагрузка · ${responses.autostart.length}`}
-        empty={responses.autostart.length === 0 ? "Отключённых записей нет" : null}
+        title={tr(`Отключённая автозагрузка · ${responses.autostart.length}`, `Disabled startup entries · ${responses.autostart.length}`)}
+        empty={responses.autostart.length === 0 ? tr("Отключённых записей нет", "No disabled entries") : null}
       >
         {responses.autostart.map((item) => (
           <div key={item.id} className={row}>
@@ -173,16 +174,16 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                 setPending({
                   command: "enable_autostart",
                   id: item.id,
-                  title: `Вернуть «${item.name}» в автозагрузку?`,
-                  body: `Запись снова будет запускаться при входе в Windows.${
-                    item.scope === "machine" ? " Windows попросит подтвердить действие от имени администратора." : ""
-                  }`,
-                  confirmLabel: "Вернуть",
+                  title: tr(`Вернуть «${item.name}» в автозагрузку?`, `Restore “${item.name}” to startup?`),
+                  body:
+                    tr("Запись снова будет запускаться при входе в Windows.", "The entry will run again when you sign in to Windows.") +
+                    (item.scope === "machine" ? tr(" Windows попросит подтвердить действие от имени администратора.", " Windows will ask you to confirm the action as an administrator.") : ""),
+                  confirmLabel: tr("Вернуть", "Restore"),
                   danger: false,
                 })
               }
             >
-              Вернуть
+              {tr("Вернуть", "Restore")}
             </button>
             <button
               className={`${button} hover:bg-rose-400/15 hover:text-rose-200`}
@@ -190,14 +191,14 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                 setPending({
                   command: "forget_autostart",
                   id: item.id,
-                  title: `Удалить запись «${item.name}» навсегда?`,
-                  body: "DefenseR забудет эту запись, и вернуть её в автозагрузку будет нельзя. Сама программа останется на месте.",
-                  confirmLabel: "Удалить навсегда",
+                  title: tr(`Удалить запись «${item.name}» навсегда?`, `Delete the entry “${item.name}” permanently?`),
+                  body: tr("DefenseR забудет эту запись, и вернуть её в автозагрузку будет нельзя. Сама программа останется на месте.", "DefenseR will forget this entry, and it can no longer be restored to startup. The program itself will stay where it is."),
+                  confirmLabel: tr("Удалить навсегда", "Delete permanently"),
                   danger: true,
                 })
               }
             >
-              Удалить
+              {tr("Удалить", "Delete")}
             </button>
           </div>
         ))}
@@ -206,14 +207,14 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
       {trust && (
         <Section
           icon={BadgeCheck}
-          title={`Доверенные · ${trust.files.length + trust.publishers.length}`}
-          empty={trust.files.length + trust.publishers.length === 0 ? "Доверенных файлов и издателей нет" : null}
+          title={tr(`Доверенные · ${trust.files.length + trust.publishers.length}`, `Trusted · ${trust.files.length + trust.publishers.length}`)}
+          empty={trust.files.length + trust.publishers.length === 0 ? tr("Доверенных файлов и издателей нет", "No trusted files or publishers") : null}
         >
           {trust.publishers.map((publisher) => (
             <div key={publisher.signer} className={row}>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm">{publisher.signer}</div>
-                <div className="text-xs text-white/35">Издатель: все программы с его действительной подписью</div>
+                <div className="text-xs text-white/35">{tr("Издатель: все программы с его действительной подписью", "Publisher: all programs with its valid signature")}</div>
               </div>
               <div className="shrink-0 text-xs text-white/40">{formatTime(publisher.addedAt)}</div>
               <button
@@ -222,14 +223,14 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                   setPending({
                     command: "untrust",
                     id: publisher.signer,
-                    title: `Перестать доверять издателю ${publisher.signer}?`,
-                    body: "DefenseR снова будет сообщать о подозрительном поведении его программ.",
-                    confirmLabel: "Убрать из доверенных",
+                    title: tr(`Перестать доверять издателю ${publisher.signer}?`, `Stop trusting publisher ${publisher.signer}?`),
+                    body: tr("DefenseR снова будет сообщать о подозрительном поведении его программ.", "DefenseR will report suspicious activity by its programs again."),
+                    confirmLabel: tr("Убрать из доверенных", "Remove from trusted"),
                     danger: false,
                   })
                 }
               >
-                Убрать
+                {tr("Убрать", "Remove")}
               </button>
             </div>
           ))}
@@ -246,21 +247,21 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                   setPending({
                     command: "untrust",
                     id: file.sha256,
-                    title: `Перестать доверять файлу ${file.name}?`,
-                    body: "DefenseR снова будет заводить инциденты об этом файле.",
-                    confirmLabel: "Убрать из доверенных",
+                    title: tr(`Перестать доверять файлу ${file.name}?`, `Stop trusting file ${file.name}?`),
+                    body: tr("DefenseR снова будет заводить инциденты об этом файле.", "DefenseR will raise incidents about this file again."),
+                    confirmLabel: tr("Убрать из доверенных", "Remove from trusted"),
                     danger: false,
                   })
                 }
               >
-                Убрать
+                {tr("Убрать", "Remove")}
               </button>
             </div>
           ))}
         </Section>
       )}
 
-      <Section icon={History} title="Журнал действий" empty={responses.log.length === 0 ? "Действий пока не было" : null}>
+      <Section icon={History} title={tr("Журнал действий", "Action log")} empty={responses.log.length === 0 ? tr("Действий пока не было", "No actions yet") : null}>
         {responses.log.map((entry, i) => (
           <div key={`${entry.at}-${i}`} className={row}>
             <span className={`size-2 shrink-0 rounded-full ${entry.error ? "bg-rose-400" : "bg-emerald-400"}`} />

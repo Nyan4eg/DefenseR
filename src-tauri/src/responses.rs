@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
+use crate::lang::{tr, trs};
+
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Entries kept in the action log.
 const LOG_LIMIT: usize = 200;
@@ -114,25 +116,25 @@ fn windows_dir() -> String {
 /// another program since the user saw it.
 pub fn kill_process(sys: &mut System, pid: u32, expected_path: Option<&str>) -> Result<(), String> {
     if pid == std::process::id() {
-        return Err("Это сам DefenseR.".to_string());
+        return Err(tr("Это сам DefenseR.", "This is DefenseR itself.").to_string());
     }
     let pid = Pid::from_u32(pid);
     sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
-    let process = sys.process(pid).ok_or("Процесс уже завершился.")?;
+    let process = sys.process(pid).ok_or(tr("Процесс уже завершился.", "The process has already ended."))?;
 
     let name = process.name().to_string_lossy().to_lowercase();
     if pid.as_u32() <= 4 || CRITICAL_PROCESSES.contains(&name.as_str()) {
-        return Err("Это системный процесс Windows: без него система не работает.".to_string());
+        return Err(tr("Это системный процесс Windows: без него система не работает.", "This is a Windows system process: the system cannot work without it.").to_string());
     }
     if let (Some(expected), Some(actual)) = (expected_path, process.exe()) {
         if !actual.to_string_lossy().eq_ignore_ascii_case(expected) {
-            return Err("Под этим номером уже работает другая программа; прежний процесс завершился.".to_string());
+            return Err(tr("Под этим номером уже работает другая программа; прежний процесс завершился.", "Another program is now running under this number; the earlier process has ended.").to_string());
         }
     }
     if process.kill() {
         Ok(())
     } else {
-        Err("Windows не дала завершить процесс. Обычно это значит, что он запущен с правами администратора или защищён системой.".to_string())
+        Err(tr("Windows не дала завершить процесс. Обычно это значит, что он запущен с правами администратора или защищён системой.", "Windows did not allow the process to be ended. This usually means it is running with administrator rights or is protected by the system.").to_string())
     }
 }
 
@@ -150,9 +152,9 @@ pub fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
 
 fn describe_io(error: &std::io::Error) -> String {
     match error.kind() {
-        std::io::ErrorKind::NotFound => "Файл не найден.".to_string(),
+        std::io::ErrorKind::NotFound => tr("Файл не найден.", "File not found.").to_string(),
         std::io::ErrorKind::PermissionDenied => {
-            "Нет доступа: файл занят работающей программой или для этой папки нужны права администратора.".to_string()
+            tr("Нет доступа: файл занят работающей программой или для этой папки нужны права администратора.", "Access denied: the file is in use by a running program, or this folder needs administrator rights.").to_string()
         }
         _ => error.to_string(),
     }
@@ -163,13 +165,13 @@ fn describe_io(error: &std::io::Error) -> String {
 pub fn quarantine(quarantine_dir: &Path, path: &Path, now: u64) -> Result<QuarantineItem, String> {
     let metadata = std::fs::metadata(path).map_err(|e| describe_io(&e))?;
     if !metadata.is_file() {
-        return Err("Это не файл.".to_string());
+        return Err(tr("Это не файл.", "This is not a file.").to_string());
     }
     if path.to_string_lossy().to_lowercase().starts_with(&windows_dir()) {
-        return Err("Файлы из папки Windows в карантин не помещаются: это может сломать систему.".to_string());
+        return Err(tr("Файлы из папки Windows в карантин не помещаются: это может сломать систему.", "Files from the Windows folder are not moved to quarantine: this could break the system.").to_string());
     }
     if std::env::current_exe().is_ok_and(|exe| exe == path) {
-        return Err("Это сам DefenseR.".to_string());
+        return Err(tr("Это сам DefenseR.", "This is DefenseR itself.").to_string());
     }
 
     std::fs::create_dir_all(quarantine_dir).map_err(|e| describe_io(&e))?;
@@ -190,7 +192,7 @@ pub fn quarantine(quarantine_dir: &Path, path: &Path, now: u64) -> Result<Quaran
 pub fn restore(quarantine_dir: &Path, item: &QuarantineItem) -> Result<(), String> {
     let original = Path::new(&item.original_path);
     if original.exists() {
-        return Err("На прежнем месте уже есть файл с таким именем.".to_string());
+        return Err(tr("На прежнем месте уже есть файл с таким именем.", "A file with this name already exists in the original location.").to_string());
     }
     if let Some(parent) = original.parent() {
         std::fs::create_dir_all(parent).map_err(|e| describe_io(&e))?;
@@ -215,11 +217,11 @@ fn netsh_elevated(arguments: &str) -> Result<(), String> {
         .env("DEFENSER_NETSH", format!("advfirewall firewall {arguments}"))
         .creation_flags(CREATE_NO_WINDOW)
         .status()
-        .map_err(|e| format!("Не удалось запустить PowerShell: {e}"))?;
+        .map_err(|e| trs(format!("Не удалось запустить PowerShell: {e}"), format!("Could not start PowerShell: {e}")))?;
     match status.code() {
         Some(0) => Ok(()),
-        Some(740) => Err("Действие отменено: для изменения правил брандмауэра нужно подтвердить запрос Windows.".to_string()),
-        code => Err(format!("Брандмауэр Windows отклонил правило (код {}).", code.unwrap_or(-1))),
+        Some(740) => Err(tr("Действие отменено: для изменения правил брандмауэра нужно подтвердить запрос Windows.", "Action cancelled: changing Windows Firewall rules requires confirming the Windows prompt.").to_string()),
+        code => Err(trs(format!("Брандмауэр Windows отклонил правило (код {}).", code.unwrap_or(-1)), format!("Windows Firewall rejected the rule (code {}).", code.unwrap_or(-1)))),
     }
 }
 
@@ -227,10 +229,10 @@ fn netsh_elevated(arguments: &str) -> Result<(), String> {
 pub fn block_program(path: &Path, now: u64) -> Result<FirewallBlock, String> {
     let text = path.to_string_lossy();
     if !path.is_file() {
-        return Err("Файл не найден.".to_string());
+        return Err(tr("Файл не найден.", "File not found.").to_string());
     }
     if text.contains('"') {
-        return Err("Недопустимый путь.".to_string());
+        return Err(tr("Недопустимый путь.", "Invalid path.").to_string());
     }
     let id = format!("DefenseR block {now}");
     netsh_elevated(&format!("add rule name=\"{id}\" dir=out action=block enable=yes program=\"{text}\""))?;

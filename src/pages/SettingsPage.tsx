@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CircleCheck, FileSearch, KeyRound, Languages, LoaderCircle, MonitorCog, RefreshCw } from "lucide-react";
-import { applyLang, lang, type Lang } from "../lib/i18n";
+import { applyLang, lang, tr, type Lang } from "../lib/i18n";
 import { Card, PageHeader } from "../components/ui";
 import { call, formatTime, inTauri, usePolling, type AiStatus, type AppSettings, type UpdateStatus } from "../lib/api";
 
@@ -58,20 +58,19 @@ function BackgroundCard() {
     <Card className="mt-4 max-w-2xl p-5">
       <div className="flex items-center gap-2 text-sm font-medium">
         <MonitorCog size={16} className="text-emerald-400" />
-        Работа в фоне
+        {tr("Работа в фоне", "Running in the background")}
       </div>
       <p className="mt-2 text-sm text-white/55">
-        Когда вы закрываете окно, DefenseR остаётся в области уведомлений и продолжает следить за компьютером. Полностью выйти можно через
-        значок там же.
+        {tr("Когда вы закрываете окно, DefenseR остаётся в области уведомлений и продолжает следить за компьютером. Полностью выйти можно через значок там же.", "When you close the window, DefenseR stays in the notification area and keeps watching the computer. To quit completely, use its icon there.")}
       </p>
 
       <div className="mt-4 flex items-center gap-4">
         <div className="min-w-0 flex-1">
-          <div className="text-sm">Запускать вместе с Windows</div>
+          <div className="text-sm">{tr("Запускать вместе с Windows", "Start with Windows")}</div>
           <div className="mt-0.5 text-xs text-white/45">
             {settings?.devBuild
-              ? "Недоступно в сборке для разработки: установите DefenseR через установщик."
-              : "DefenseR будет стартовать при входе в систему, сразу свёрнутым в область уведомлений."}
+              ? tr("Недоступно в сборке для разработки: установите DefenseR через установщик.", "Not available in a development build: install DefenseR with the installer.")
+              : tr("DefenseR будет стартовать при входе в систему, сразу свёрнутым в область уведомлений.", "DefenseR will start when you sign in, minimised to the notification area straight away.")}
           </div>
         </div>
         <Toggle checked={autostart} disabled={!settings || settings.devBuild} onChange={changeAutostart} />
@@ -79,8 +78,8 @@ function BackgroundCard() {
 
       <div className="mt-4 flex items-center gap-4">
         <div className="min-w-0 flex-1">
-          <div className="text-sm">Уведомления о новых инцидентах</div>
-          <div className="mt-0.5 text-xs text-white/45">Только средней и высокой важности. Инциденты низкой важности видны в окне.</div>
+          <div className="text-sm">{tr("Уведомления о новых инцидентах", "Notifications about new incidents")}</div>
+          <div className="mt-0.5 text-xs text-white/45">{tr("Только средней и высокой важности. Инциденты низкой важности видны в окне.", "Medium and high severity only. Low-severity incidents are shown in the window.")}</div>
         </div>
         <Toggle checked={settings?.notifications ?? false} disabled={!settings} onChange={changeNotifications} />
       </div>
@@ -94,23 +93,23 @@ type FileOption = "watchDownloads" | "watchTemp" | "watchRemovable" | "autoVirus
 const FILE_OPTIONS: { key: FileOption; title: string; description: string }[] = [
   {
     key: "watchDownloads",
-    title: "«Загрузки» и рабочий стол",
-    description: "Программы, которые появляются в этих папках, сразу оцениваются моделью и проверяются на подпись. Архивы не распаковываются.",
+    title: tr("«Загрузки» и рабочий стол", "Downloads and the desktop"),
+    description: tr("Программы, которые появляются в этих папках, сразу оцениваются моделью и проверяются на подпись. Архивы не распаковываются.", "Programs that appear in these folders are scored by the model and checked for a signature straight away. Archives are not unpacked."),
   },
   {
     key: "watchTemp",
-    title: "Временная папка",
-    description: "Сюда распаковываются установщики и сюда же часто кладут свои файлы вредоносные программы. Об этой папке сообщается только при уверенной оценке модели или нарушенной подписи.",
+    title: tr("Временная папка", "Temp folder"),
+    description: tr("Сюда распаковываются установщики и сюда же часто кладут свои файлы вредоносные программы. Об этой папке сообщается только при уверенной оценке модели или нарушенной подписи.", "Installers unpack here, and malware often puts its files here too. This folder is only reported when the model is confident or a signature is broken."),
   },
   {
     key: "watchRemovable",
-    title: "Флешки и другие съёмные диски",
-    description: "При подключении диска проверяются все программы на нём, затем — новые.",
+    title: tr("Флешки и другие съёмные диски", "USB sticks and other removable drives"),
+    description: tr("При подключении диска проверяются все программы на нём, затем — новые.", "When a drive is connected, all programs on it are checked, and then any new ones."),
   },
   {
     key: "autoVirustotal",
-    title: "Спрашивать VirusTotal автоматически",
-    description: "Когда модель считает файл вредоносным, DefenseR сам отправит его SHA-256 в VirusTotal и поднимет важность инцидента, если антивирусы согласны. Нужен ключ VirusTotal. Выключено, пока вы не включите: отпечатки файлов будут уходить без вашего нажатия.",
+    title: tr("Спрашивать VirusTotal автоматически", "Ask VirusTotal automatically"),
+    description: tr("Когда модель считает файл вредоносным, DefenseR сам отправит его SHA-256 в VirusTotal и поднимет важность инцидента, если антивирусы согласны. Нужен ключ VirusTotal. Выключено, пока вы не включите: отпечатки файлов будут уходить без вашего нажатия.", "When the model considers a file malicious, DefenseR will send its SHA-256 to VirusTotal on its own and raise the incident's severity if antivirus engines agree. Requires a VirusTotal key. Off until you turn it on: file fingerprints will be sent without you clicking anything."),
   },
 ];
 
@@ -137,7 +136,7 @@ function FilesCard({ hasVtKey }: { hasVtKey: boolean }) {
     <Card className="mt-4 max-w-2xl p-5">
       <div className="flex items-center gap-2 text-sm font-medium">
         <FileSearch size={16} className="text-emerald-400" />
-        Проверка новых файлов
+        {tr("Проверка новых файлов", "Checking new files")}
       </div>
       {FILE_OPTIONS.map(({ key, title, description }) => (
         <div key={key} className="mt-4 flex items-center gap-4">
@@ -145,7 +144,7 @@ function FilesCard({ hasVtKey }: { hasVtKey: boolean }) {
             <div className="text-sm">{title}</div>
             <div className="mt-0.5 text-xs text-white/45">{description}</div>
             {key === "autoVirustotal" && settings?.autoVirustotal && !hasVtKey && (
-              <div className="mt-1 text-xs text-amber-300">Ключ VirusTotal не добавлен, поэтому запросы не отправляются.</div>
+              <div className="mt-1 text-xs text-amber-300">{tr("Ключ VirusTotal не добавлен, поэтому запросы не отправляются.", "No VirusTotal key has been added, so no requests are sent.")}</div>
             )}
           </div>
           <Toggle checked={settings?.[key] ?? false} disabled={!settings} onChange={(enabled) => change(key, enabled)} />
@@ -194,23 +193,23 @@ function UpdatesCard() {
 
   const busy = !status || status.checking || status.installing;
   const state = !status
-    ? "Загрузка…"
+    ? tr("Загрузка…", "Loading…")
     : status.installing
-      ? `Устанавливается версия ${status.available ?? ""}. DefenseR перезапустится сам.`
+      ? tr(`Устанавливается версия ${status.available ?? ""}. DefenseR перезапустится сам.`, `Installing version ${status.available ?? ""}. DefenseR will restart on its own.`)
       : status.checking
-        ? "Проверка…"
+        ? tr("Проверка…", "Checking…")
         : status.available
-          ? `Доступна версия ${status.available}`
+          ? tr(`Доступна версия ${status.available}`, `Version ${status.available} is available`)
           : status.checkedAt
-            ? `Установлена последняя версия · проверено ${formatTime(status.checkedAt)}`
-            : "Обновления ещё не проверялись";
+            ? tr(`Установлена последняя версия · проверено ${formatTime(status.checkedAt)}`, `The latest version is installed · checked ${formatTime(status.checkedAt)}`)
+            : tr("Обновления ещё не проверялись", "Updates have not been checked yet");
   const button = "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm disabled:opacity-40";
 
   return (
     <Card className="mt-4 max-w-2xl p-5">
       <div className="flex items-center gap-2 text-sm font-medium">
         <RefreshCw size={16} className="text-emerald-400" />
-        Обновления
+        {tr("Обновления", "Updates")}
       </div>
       <div className="mt-3 flex items-center gap-3">
         <div className="min-w-0 flex-1">
@@ -220,23 +219,22 @@ function UpdatesCard() {
         {status?.available && !status.devBuild && (
           <button onClick={() => run("install_update")} disabled={busy} className={`${button} bg-emerald-400/15 text-emerald-200 hover:bg-emerald-400/25`}>
             {status.installing && <LoaderCircle size={14} className="animate-spin" />}
-            Установить
+            {tr("Установить", "Install")}
           </button>
         )}
         <button onClick={() => run("check_update")} disabled={busy} className={`${button} bg-white/8 text-white/70 hover:bg-white/12`}>
           {status?.checking && <LoaderCircle size={14} className="animate-spin" />}
-          Проверить
+          {tr("Проверить", "Check")}
         </button>
       </div>
       {status?.available && status.notes && <p className="mt-3 whitespace-pre-line rounded-xl bg-black/20 px-3 py-2.5 text-xs text-white/60">{status.notes}</p>}
-      {status?.devBuild && <p className="mt-3 text-xs text-white/45">Это сборка для разработки: она проверяет обновления, но не устанавливает их.</p>}
+      {status?.devBuild && <p className="mt-3 text-xs text-white/45">{tr("Это сборка для разработки: она проверяет обновления, но не устанавливает их.", "This is a development build: it checks for updates but does not install them.")}</p>}
 
       <div className="mt-4 flex items-center gap-4">
         <div className="min-w-0 flex-1">
-          <div className="text-sm">Устанавливать обновления автоматически</div>
+          <div className="text-sm">{tr("Устанавливать обновления автоматически", "Install updates automatically")}</div>
           <div className="mt-0.5 text-xs text-white/45">
-            Новая версия ставится сама, когда окно свёрнуто в область уведомлений. Обновления берутся из выпусков проекта на GitHub и
-            принимаются только с подписью разработчика.
+            {tr("Новая версия ставится сама, когда окно свёрнуто в область уведомлений. Обновления берутся из выпусков проекта на GitHub и принимаются только с подписью разработчика.", "A new version installs itself when the window is minimised to the notification area. Updates come from the project's releases on GitHub and are accepted only with the developer's signature.")}
           </div>
         </div>
         <Toggle checked={automatic ?? false} disabled={automatic === null} onChange={changeAutomatic} />
@@ -312,10 +310,10 @@ function KeyCard({ title, description, placeholder, hasKey, setCommand, clearCom
         <div className="mt-4 flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-sm text-emerald-300">
             <CircleCheck size={16} />
-            Ключ сохранён
+            {tr("Ключ сохранён", "Key saved")}
           </span>
           <button onClick={() => run(clearCommand)} className="rounded-lg bg-white/8 px-3 py-1.5 text-sm text-white/70 hover:bg-white/12">
-            Удалить ключ
+            {tr("Удалить ключ", "Remove key")}
           </button>
         </div>
       ) : (
@@ -339,7 +337,7 @@ function KeyCard({ title, description, placeholder, hasKey, setCommand, clearCom
             disabled={!key.trim()}
             className="rounded-lg bg-emerald-400/15 px-4 py-1.5 text-sm text-emerald-200 hover:bg-emerald-400/25 disabled:opacity-40"
           >
-            Сохранить
+            {tr("Сохранить", "Save")}
           </button>
         </form>
       )}
@@ -354,12 +352,12 @@ export function SettingsPage({ hasKey, onChanged }: { hasKey: boolean; onChanged
 
   return (
     <>
-      <PageHeader title="Настройки" subtitle="Ключи, работа в фоне и обновления" />
+      <PageHeader title={tr("Настройки", "Settings")} subtitle={tr("Ключи, работа в фоне и обновления", "Keys, running in the background and updates")} />
 
       <LanguageCard />
       <KeyCard
-        title="Ключ Anthropic API"
-        description="Ключ нужен, чтобы Claude объяснял инциденты простым языком. Он хранится в диспетчере учётных данных Windows, а не в файлах приложения. Получить ключ можно в консоли Anthropic; запросы оплачиваются с вашего аккаунта."
+        title={tr("Ключ Anthropic API", "Anthropic API key")}
+        description={tr("Ключ нужен, чтобы Claude объяснял инциденты простым языком. Он хранится в диспетчере учётных данных Windows, а не в файлах приложения. Получить ключ можно в консоли Anthropic; запросы оплачиваются с вашего аккаунта.", "The key lets Claude explain incidents in plain language. It is stored in Windows Credential Manager, not in the app's files. You can get a key in the Anthropic console; requests are billed to your account.")}
         placeholder="sk-ant-…"
         hasKey={hasKey}
         setCommand="set_api_key"
@@ -368,9 +366,9 @@ export function SettingsPage({ hasKey, onChanged }: { hasKey: boolean; onChanged
       />
       <KeyCard
         className="mt-4"
-        title="Ключ VirusTotal"
-        description="С ключом можно узнать, что о файле думают десятки антивирусов: кнопка «Проверить на VirusTotal» есть в инцидентах и в результатах проверки файлов. Бесплатный ключ выдаётся в профиле на virustotal.com и даёт 4 проверки в минуту, 500 в день. Хранится там же, в диспетчере учётных данных Windows."
-        placeholder="64 символа"
+        title={tr("Ключ VirusTotal", "VirusTotal key")}
+        description={tr("С ключом можно узнать, что о файле думают десятки антивирусов: кнопка «Проверить на VirusTotal» есть в инцидентах и в результатах проверки файлов. Бесплатный ключ выдаётся в профиле на virustotal.com и даёт 4 проверки в минуту, 500 в день. Хранится там же, в диспетчере учётных данных Windows.", "With a key you can find out what dozens of antivirus engines think of a file: the “Check on VirusTotal” button is in incidents and in file scan results. A free key is issued in your profile on virustotal.com and allows 4 lookups a minute, 500 a day. It is stored in the same place, Windows Credential Manager.")}
+        placeholder={tr("64 символа", "64 characters")}
         hasKey={vt?.hasKey ?? false}
         setCommand="set_vt_key"
         clearCommand="clear_vt_key"
@@ -382,16 +380,14 @@ export function SettingsPage({ hasKey, onChanged }: { hasKey: boolean; onChanged
       <UpdatesCard />
 
       <Card className="mt-4 max-w-2xl p-5 text-sm text-white/55">
-        <div className="font-medium text-white/85">Что покидает компьютер</div>
+        <div className="font-medium text-white/85">{tr("Что покидает компьютер", "What leaves the computer")}</div>
         <p className="mt-2">
-          В Anthropic — ничего, пока вы не нажмёте «Объяснить с помощью ИИ» в карточке инцидента. Тогда уходят заголовок, описание и детали
-          именно этого инцидента: имена процессов, пути и команды. Путь к папке вашего профиля заменяется на %USERPROFILE%.
+          {tr("В Anthropic — ничего, пока вы не нажмёте «Объяснить с помощью ИИ» в карточке инцидента. Тогда уходят заголовок, описание и детали именно этого инцидента: имена процессов, пути и команды. Путь к папке вашего профиля заменяется на %USERPROFILE%.", "To Anthropic — nothing, until you click “Explain with AI” on an incident card. Then the title, description and details of that one incident are sent: process names, paths and commands. The path to your profile folder is replaced with %USERPROFILE%.")}
         </p>
         <p className="mt-2">
-          В VirusTotal — только SHA-256 файла (его цифровой отпечаток): по кнопке «Проверить на VirusTotal», а если вы включили автоматическую
-          проверку — ещё и для файлов, которые модель сочла вредоносными. Сам файл, его имя и путь не отправляются.
+          {tr("В VirusTotal — только SHA-256 файла (его цифровой отпечаток): по кнопке «Проверить на VirusTotal», а если вы включили автоматическую проверку — ещё и для файлов, которые модель сочла вредоносными. Сам файл, его имя и путь не отправляются.", "To VirusTotal — only the file's SHA-256 (its digital fingerprint): when you click “Check on VirusTotal” and, if you turned on automatic checking, also for files the model considered malicious. The file itself, its name and its path are not sent.")}
         </p>
-        <p className="mt-2">Список процессов, сетевые соединения и остальные данные компьютер не покидают.</p>
+        <p className="mt-2">{tr("Список процессов, сетевые соединения и остальные данные компьютер не покидают.", "The process list, network connections and all other data never leave the computer.")}</p>
       </Card>
     </>
   );

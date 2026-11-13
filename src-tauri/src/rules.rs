@@ -8,6 +8,7 @@ use crate::collectors::autostart::AutostartEntry;
 use crate::collectors::processes::ProcessInfo;
 use crate::collectors::protection::ProtectionStatus;
 use crate::incidents::{Evidence, Finding, Severity, Target};
+use crate::lang::{tr, trs};
 
 /// Names malware commonly borrows; the real ones only run from the Windows directory.
 const SYSTEM_PROCESS_NAMES: [&str; 12] = [
@@ -70,9 +71,13 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
                     id: format!("process-temp-path|{}", exe.to_lowercase()),
                     rule: "process-temp-path",
                     severity: Severity::Medium,
-                    title: format!("{} запущен из временной папки", process.name),
-                    summary: "Программы редко работают из временных папок постоянно. Так ведут себя установщики и обновления, но также и вредоносные программы.".to_string(),
-                    evidence: evidence(&[("Процесс", &process.name), ("PID", &pid), ("Путь", exe)]),
+                    title: trs(format!("{} запущен из временной папки", process.name), format!("{} is running from the temp folder", process.name)),
+                    summary: tr(
+                        "Программы редко работают из временных папок постоянно. Так ведут себя установщики и обновления, но также и вредоносные программы.",
+                        "Programs rarely run from temp folders for long. Installers and updates behave this way, but so does malware.",
+                    )
+                    .to_string(),
+                    evidence: evidence(&[(tr("Процесс", "Process"), &process.name), ("PID", &pid), (tr("Путь", "Path"), exe)]),
                     target: Target::process(process.pid, exe),
                     timeline: Vec::new(),
                 });
@@ -83,9 +88,13 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
                     id: format!("process-masquerade|{}", exe.to_lowercase()),
                     rule: "process-masquerade",
                     severity: Severity::High,
-                    title: format!("{} запущен не из папки Windows", process.name),
-                    summary: "Процесс носит имя системного компонента Windows, но его файл лежит в другом месте. Так вредоносные программы маскируются под системные.".to_string(),
-                    evidence: evidence(&[("Процесс", &process.name), ("PID", &pid), ("Путь", exe)]),
+                    title: trs(format!("{} запущен не из папки Windows", process.name), format!("{} is running from outside the Windows folder", process.name)),
+                    summary: tr(
+                        "Процесс носит имя системного компонента Windows, но его файл лежит в другом месте. Так вредоносные программы маскируются под системные.",
+                        "The process has the name of a Windows system component, but its file is somewhere else. This is how malware disguises itself as part of the system.",
+                    )
+                    .to_string(),
+                    evidence: evidence(&[(tr("Процесс", "Process"), &process.name), ("PID", &pid), (tr("Путь", "Path"), exe)]),
                     target: Target::process(process.pid, exe),
                     timeline: Vec::new(),
                 });
@@ -99,9 +108,17 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
                     id: format!("office-spawns-shell|{}|{}", parent.to_lowercase(), name),
                     rule: "office-spawns-shell",
                     severity: Severity::High,
-                    title: format!("{parent} запустил {}", process.name),
-                    summary: "Офисное приложение запустило командную оболочку или обработчик скриптов. Так срабатывают вредоносные макросы в документах.".to_string(),
-                    evidence: evidence(&[("Родительский процесс", parent), ("Запущенный процесс", &process.name), ("PID", &pid)]),
+                    title: trs(format!("{parent} запустил {}", process.name), format!("{parent} started {}", process.name)),
+                    summary: tr(
+                        "Офисное приложение запустило командную оболочку или обработчик скриптов. Так срабатывают вредоносные макросы в документах.",
+                        "An office application started a command shell or a script host. This is how malicious macros in documents work.",
+                    )
+                    .to_string(),
+                    evidence: evidence(&[
+                        (tr("Родительский процесс", "Parent process"), parent),
+                        (tr("Запущенный процесс", "Started process"), &process.name),
+                        ("PID", &pid),
+                    ]),
                     target: Some(Target { pid: Some(process.pid), path: process.exe.clone(), autostart: None }),
                     timeline: Vec::new(),
                 });
@@ -114,15 +131,26 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
     let own_exe = std::env::current_exe().ok().map(|exe| exe.to_string_lossy().to_lowercase());
     for entry in entries {
         let subject = format!("{}|{}", entry.source.to_lowercase(), entry.name.to_lowercase());
-        let details = evidence(&[("Запись", &entry.name), ("Команда", &entry.command), ("Источник", &entry.source)]);
+        let details = evidence(&[
+            (tr("Запись", "Entry"), &entry.name),
+            (tr("Команда", "Command"), &entry.command),
+            (tr("Источник", "Source"), &entry.source),
+        ]);
 
         if entry.flags.iter().any(|f| f == "temp-path") {
             findings.push(Finding {
                 id: format!("autostart-temp-path|{subject}"),
                 rule: "autostart-temp-path",
                 severity: Severity::High,
-                title: format!("Автозагрузка «{}» запускает файл из временной папки", entry.name),
-                summary: "Запись автозагрузки ссылается на временную папку. Обычные программы так не устанавливаются; это типичный способ закрепления вредоносных программ.".to_string(),
+                title: trs(
+                    format!("Автозагрузка «{}» запускает файл из временной папки", entry.name),
+                    format!("Startup entry “{}” runs a file from the temp folder", entry.name),
+                ),
+                summary: tr(
+                    "Запись автозагрузки ссылается на временную папку. Обычные программы так не устанавливаются; это типичный способ закрепления вредоносных программ.",
+                    "The startup entry points to the temp folder. Ordinary programs are not installed this way; it is a typical way for malware to stay on a computer.",
+                )
+                .to_string(),
                 evidence: details.clone(),
                 target: Target::autostart(&entry.source, &entry.name),
                 timeline: Vec::new(),
@@ -134,8 +162,15 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 id: format!("autostart-missing-file|{subject}"),
                 rule: "autostart-missing-file",
                 severity: Severity::Low,
-                title: format!("Автозагрузка «{}» ссылается на несуществующий файл", entry.name),
-                summary: "Файл из записи автозагрузки не найден. Чаще всего это остаток удалённой программы.".to_string(),
+                title: trs(
+                    format!("Автозагрузка «{}» ссылается на несуществующий файл", entry.name),
+                    format!("Startup entry “{}” points to a file that does not exist", entry.name),
+                ),
+                summary: tr(
+                    "Файл из записи автозагрузки не найден. Чаще всего это остаток удалённой программы.",
+                    "The file named in the startup entry was not found. Most often this is a leftover of a program that was removed.",
+                )
+                .to_string(),
                 evidence: details.clone(),
                 target: Target::autostart(&entry.source, &entry.name),
                 timeline: Vec::new(),
@@ -149,8 +184,12 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 id: format!("autostart-new|{}", autostart_key(entry).to_lowercase()),
                 rule: "autostart-new",
                 severity: Severity::Medium,
-                title: format!("Новая запись автозагрузки «{}»", entry.name),
-                summary: "Этой записи не было при первом запуске DefenseR, либо её команда изменилась. Новые программы добавляют себя в автозагрузку при установке; так же закрепляются и вредоносные.".to_string(),
+                title: trs(format!("Новая запись автозагрузки «{}»", entry.name), format!("New startup entry “{}”", entry.name)),
+                summary: tr(
+                    "Этой записи не было при первом запуске DefenseR, либо её команда изменилась. Новые программы добавляют себя в автозагрузку при установке; так же закрепляются и вредоносные.",
+                    "This entry was not there when DefenseR first ran, or its command has changed. New programs add themselves to startup when they are installed; malware stays on a computer the same way.",
+                )
+                .to_string(),
                 evidence: details,
                 target: Target::autostart(&entry.source, &entry.name),
                 timeline: Vec::new(),
@@ -165,9 +204,13 @@ fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) 
             id: "protection-realtime-off".to_string(),
             rule: "protection-realtime-off",
             severity: Severity::High,
-            title: "Защита в реальном времени отключена".to_string(),
-            summary: "Microsoft Defender не проверяет файлы и программы в момент запуска.".to_string(),
-            evidence: evidence(&[("Защита в реальном времени", "отключена")]),
+            title: tr("Защита в реальном времени отключена", "Real-time protection is turned off").to_string(),
+            summary: tr(
+                "Microsoft Defender не проверяет файлы и программы в момент запуска.",
+                "Microsoft Defender is not checking files and programs as they start.",
+            )
+            .to_string(),
+            evidence: evidence(&[(tr("Защита в реальном времени", "Real-time protection"), tr("отключена", "turned off"))]),
             target: None,
             timeline: Vec::new(),
         });
@@ -179,9 +222,13 @@ fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) 
             id: "protection-firewall-off".to_string(),
             rule: "protection-firewall-off",
             severity: Severity::High,
-            title: "Брандмауэр Windows отключён".to_string(),
-            summary: "Для части сетевых профилей брандмауэр не фильтрует входящие подключения.".to_string(),
-            evidence: evidence(&[("Профили с отключённым брандмауэром", &disabled.join(", "))]),
+            title: tr("Брандмауэр Windows отключён", "Windows firewall is turned off").to_string(),
+            summary: tr(
+                "Для части сетевых профилей брандмауэр не фильтрует входящие подключения.",
+                "For some network profiles the firewall is not filtering incoming connections.",
+            )
+            .to_string(),
+            evidence: evidence(&[(tr("Профили с отключённым брандмауэром", "Profiles with the firewall turned off"), &disabled.join(", "))]),
             target: None,
             timeline: Vec::new(),
         });
@@ -192,9 +239,13 @@ fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) 
             id: "protection-signatures-old".to_string(),
             rule: "protection-signatures-old",
             severity: Severity::Low,
-            title: "Антивирусные базы устарели".to_string(),
-            summary: "Microsoft Defender давно не получал обновлений и может не знать о новых угрозах.".to_string(),
-            evidence: evidence(&[("Возраст баз, дней", &age.to_string())]),
+            title: tr("Антивирусные базы устарели", "Antivirus definitions are out of date").to_string(),
+            summary: tr(
+                "Microsoft Defender давно не получал обновлений и может не знать о новых угрозах.",
+                "Microsoft Defender has not received updates for a long time and may not know about new threats.",
+            )
+            .to_string(),
+            evidence: evidence(&[(tr("Возраст баз, дней", "Age of definitions, days"), &age.to_string())]),
             target: None,
             timeline: Vec::new(),
         });

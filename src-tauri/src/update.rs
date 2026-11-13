@@ -7,6 +7,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
+use crate::lang::{tr, trs};
+
 use crate::{lock, monitor, shell, AppState};
 
 const START_DELAY: Duration = Duration::from_secs(30);
@@ -67,7 +69,7 @@ pub async fn check(app: &AppHandle) -> Result<Option<Update>, String> {
         Ok(updater) => updater.check().await,
         Err(error) => Err(error),
     };
-    let result = result.map_err(|error| format!("Не удалось проверить обновления: {error}"));
+    let result = result.map_err(|error| trs(format!("Не удалось проверить обновления: {error}"), format!("Could not check for updates: {error}")));
     set(app, |status| {
         status.checking = false;
         match &result {
@@ -87,7 +89,7 @@ pub async fn check(app: &AppHandle) -> Result<Option<Update>, String> {
 /// that moment: the new version then starts as hidden as this one was.
 pub async fn install(app: &AppHandle, update: Update, in_background: bool) -> Result<(), String> {
     if cfg!(debug_assertions) {
-        return Err("Сборка для разработки не обновляется: установите DefenseR через установщик.".to_string());
+        return Err(tr("Сборка для разработки не обновляется: установите DefenseR через установщик.", "A development build cannot be updated: install DefenseR with the installer.").to_string());
     }
     set(app, |status| {
         status.installing = true;
@@ -102,7 +104,7 @@ pub async fn install(app: &AppHandle, update: Update, in_background: bool) -> Re
     let result = update
         .download_and_install(|_, _| {}, || {})
         .await
-        .map_err(|error| format!("Не удалось установить обновление: {error}"));
+        .map_err(|error| trs(format!("Не удалось установить обновление: {error}"), format!("Could not install the update: {error}")));
     // Only reached when the installer did not take over.
     if let Some(marker) = &marker {
         let _ = std::fs::remove_file(marker);
@@ -137,7 +139,7 @@ pub fn run(app: AppHandle) {
             } else {
                 if announced.as_deref() != Some(update.version.as_str()) {
                     announced = Some(update.version.clone());
-                    shell::notify(&app, "Доступно обновление DefenseR", &format!("Версия {}. Установить её можно в настройках.", update.version));
+                    shell::notify(&app, tr("Доступно обновление DefenseR", "A DefenseR update is available"), &trs(format!("Версия {}. Установить её можно в настройках.", update.version), format!("Version {}. You can install it in the settings.", update.version)));
                 }
                 pending = Some(update);
             }

@@ -8,6 +8,8 @@ use ort::value::Tensor;
 use serde::{Deserialize, Serialize};
 
 use super::features::FEATURE_COUNT;
+
+use crate::lang::{tr, trs};
 use crate::lock;
 
 static MODEL: &[u8] = include_bytes!("../../model/pe-model.onnx");
@@ -43,11 +45,11 @@ pub struct Model {
 
 impl Model {
     pub fn load() -> Result<Self, String> {
-        let info: ModelInfo = serde_json::from_str(INFO).map_err(|e| format!("Описание модели повреждено: {e}"))?;
+        let info: ModelInfo = serde_json::from_str(INFO).map_err(|e| trs(format!("Описание модели повреждено: {e}"), format!("The model description is damaged: {e}")))?;
         if info.feature_count != FEATURE_COUNT {
-            return Err(format!("Модель ждёт {} признаков, а приложение считает {FEATURE_COUNT}.", info.feature_count));
+            return Err(trs(format!("Модель ждёт {} признаков, а приложение считает {FEATURE_COUNT}.", info.feature_count), format!("The model expects {} features, but the app computes {FEATURE_COUNT}.", info.feature_count)));
         }
-        let failed = |e: String| format!("Не удалось загрузить модель: {e}");
+        let failed = |e: String| trs(format!("Не удалось загрузить модель: {e}"), format!("Could not load the model: {e}"));
         let environment = ort::init().build().map_err(|e| failed(e.to_string()))?;
         let session = Session::builder(&environment)
             .map_err(|e| failed(e.to_string()))?
@@ -60,11 +62,11 @@ impl Model {
 
     /// Probability, from 0 to 1, that the file with these features is malicious.
     pub fn score(&self, features: Vec<f32>) -> Result<f32, String> {
-        let failed = |e: ort::Error| format!("Модель не смогла оценить файл: {e}");
+        let failed = |e: ort::Error| trs(format!("Модель не смогла оценить файл: {e}"), format!("The model could not evaluate the file: {e}"));
         let input = Tensor::<f32>::from_array(([1, FEATURE_COUNT], features)).map_err(failed)?;
         let mut session = lock(&self.session);
         let outputs = session.run(ort::inputs![input]).map_err(failed)?;
         let (_, probabilities) = outputs["probabilities"].try_extract_tensor::<f32>().map_err(failed)?;
-        probabilities.get(1).copied().ok_or_else(|| "Модель вернула неожиданный результат.".to_string())
+        probabilities.get(1).copied().ok_or_else(|| tr("Модель вернула неожиданный результат.", "The model returned an unexpected result.").to_string())
     }
 }

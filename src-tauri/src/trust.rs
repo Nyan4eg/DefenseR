@@ -6,6 +6,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::lang::tr;
+
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::ScanResult;
 
@@ -72,7 +74,7 @@ impl Store {
     }
 
     pub fn add_file(&mut self, result: &ScanResult, now: u64) -> Result<(), String> {
-        let sha256 = result.sha256.clone().ok_or("Файл не удалось прочитать.")?;
+        let sha256 = result.sha256.clone().ok_or(tr("Файл не удалось прочитать.", "The file could not be read."))?;
         if !self.trusts_file(result) {
             self.state.files.insert(0, TrustedFile { sha256, name: result.name.clone(), path: result.path.clone(), added_at: now });
         }
@@ -80,7 +82,7 @@ impl Store {
     }
 
     pub fn add_publisher(&mut self, result: &ScanResult, now: u64) -> Result<(), String> {
-        let signer = publisher(result).ok_or("У файла нет действительной подписи, поэтому издателю доверять нельзя.")?;
+        let signer = publisher(result).ok_or(tr("У файла нет действительной подписи, поэтому издателю доверять нельзя.", "The file has no valid digital signature, so its publisher cannot be trusted."))?;
         if !self.trusts_publisher(result) {
             self.state.publishers.insert(0, TrustedPublisher { signer: signer.to_string(), added_at: now });
         }

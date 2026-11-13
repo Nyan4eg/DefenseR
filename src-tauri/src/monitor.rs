@@ -11,6 +11,7 @@ use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::Verdict;
 use crate::downloads::Place;
+use crate::lang::{tr, trs};
 use crate::vt::Reputation;
 use crate::{ai, chains, downloads, lock, shell, vt, AppState};
 
@@ -49,14 +50,23 @@ fn scan_running_files(state: &AppState, processes: &[ProcessInfo]) -> Vec<Findin
         let signature = result.signature.as_ref().map(|signature| signature.status);
 
         if signature == Some(SignatureStatus::Invalid) {
-            let signer = result.signature.as_ref().and_then(|signature| signature.signer.clone()).unwrap_or_else(|| "неизвестно".to_string());
-            let evidence = [("Процесс", process.name.clone()), ("PID", process.pid.to_string()), ("Путь", result.path.clone()), ("Подписан", signer)];
+            let signer = result.signature.as_ref().and_then(|signature| signature.signer.clone()).unwrap_or_else(|| tr("неизвестно", "unknown").to_string());
+            let evidence = [
+                (tr("Процесс", "Process"), process.name.clone()),
+                ("PID", process.pid.to_string()),
+                (tr("Путь", "Path"), result.path.clone()),
+                (tr("Подписан", "Signed by"), signer),
+            ];
             findings.push(Finding {
                 id: format!("process-signature-broken|{}", result.path.to_lowercase()),
                 rule: "process-signature-broken",
                 severity: Severity::High,
-                title: format!("Файл {} изменён после подписания", process.name),
-                summary: "У файла этой запущенной программы есть цифровая подпись, но она не сходится с содержимым: файл изменили уже после того, как издатель его подписал. Так бывает при повреждении файла, а также когда в чужую программу встраивают посторонний код.".to_string(),
+                title: trs(format!("Файл {} изменён после подписания", process.name), format!("File {} was changed after it was signed", process.name)),
+                summary: tr(
+                    "У файла этой запущенной программы есть цифровая подпись, но она не сходится с содержимым: файл изменили уже после того, как издатель его подписал. Так бывает при повреждении файла, а также когда в чужую программу встраивают посторонний код.",
+                    "The file of this running program has a digital signature, but it does not match the contents: the file was changed after the publisher signed it. This happens when a file is damaged, and also when foreign code is built into someone else's program.",
+                )
+                .to_string(),
                 evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
                 target: Target::process(process.pid, &result.path),
                 timeline: Vec::new(),
@@ -70,19 +80,26 @@ fn scan_running_files(state: &AppState, processes: &[ProcessInfo]) -> Vec<Findin
         }
         let score = format!("{:.1}%", result.score.unwrap_or(0.0) * 100.0);
         let evidence = [
-            ("Процесс", process.name.clone()),
+            (tr("Процесс", "Process"), process.name.clone()),
             ("PID", process.pid.to_string()),
-            ("Путь", result.path.clone()),
-            ("Оценка модели", score),
-            ("Цифровая подпись", downloads::signature_text(signature).to_string()),
+            (tr("Путь", "Path"), result.path.clone()),
+            (tr("Оценка модели", "Model score"), score),
+            (tr("Цифровая подпись", "Digital signature"), downloads::signature_text(signature).to_string()),
             ("SHA-256", result.sha256.clone().unwrap_or_default()),
         ];
         findings.push(Finding {
             id: format!("process-ml-malicious|{}", result.path.to_lowercase()),
             rule: "process-ml-malicious",
             severity: Severity::Medium,
-            title: format!("Модель считает {} похожим на вредоносную программу", process.name),
-            summary: "Локальная модель оценила строение файла этой запущенной программы как характерное для вредоносных, и у файла нет действительной цифровой подписи. Модель ошибается, особенно на новых и редких программах, поэтому это повод проверить файл, а не приговор.".to_string(),
+            title: trs(
+                format!("Модель считает {} похожим на вредоносную программу", process.name),
+                format!("The model thinks {} looks like malware", process.name),
+            ),
+            summary: tr(
+                "Локальная модель оценила строение файла этой запущенной программы как характерное для вредоносных, и у файла нет действительной цифровой подписи. Модель ошибается, особенно на новых и редких программах, поэтому это повод проверить файл, а не приговор.",
+                "The local model rated the structure of this running program's file as typical of malware, and the file has no valid digital signature. The model makes mistakes, especially with new and rare programs, so this is a reason to check the file, not a verdict.",
+            )
+            .to_string(),
             evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
             target: Target::process(process.pid, &result.path),
             timeline: Vec::new(),
@@ -121,9 +138,15 @@ fn second_opinion(state: &AppState, findings: &mut [Finding], next_lookup: &mut 
 
         if reputation.malicious >= AGREEMENT {
             finding.severity = Severity::High;
-            finding.summary.push_str(&format!(
-                " Антивирусы с этим согласны: по данным VirusTotal, файл считают вредоносным {} из {}.",
-                reputation.malicious, reputation.total
+            finding.summary.push_str(&trs(
+                format!(
+                    " Антивирусы с этим согласны: по данным VirusTotal, файл считают вредоносным {} из {}.",
+                    reputation.malicious, reputation.total
+                ),
+                format!(
+                    " Antivirus engines agree: according to VirusTotal, {} of {} consider the file malicious.",
+                    reputation.malicious, reputation.total
+                ),
             ));
         }
         answers.push((finding.id.clone(), reputation));

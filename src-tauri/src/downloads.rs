@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sysinfo::Disks;
 
 use crate::incidents::{Evidence, Finding, Severity, Target};
+use crate::lang::{tr, trs};
 use crate::lock;
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::{self, ScanResult, Scanner, Verdict};
@@ -53,10 +54,10 @@ pub struct Arrival {
 impl Place {
     fn located(self) -> &'static str {
         match self {
-            Self::Downloads => "в папке загрузок",
-            Self::Desktop => "на рабочем столе",
-            Self::Temp => "во временной папке",
-            Self::Removable => "на съёмном диске",
+            Self::Downloads => tr("в папке загрузок", "in the Downloads folder"),
+            Self::Desktop => tr("на рабочем столе", "on the desktop"),
+            Self::Temp => tr("во временной папке", "in the temp folder"),
+            Self::Removable => tr("на съёмном диске", "on a removable drive"),
         }
     }
 }
@@ -182,11 +183,11 @@ pub fn source_host(path: &Path) -> Option<String> {
 
 pub fn signature_text(status: Option<SignatureStatus>) -> &'static str {
     match status {
-        Some(SignatureStatus::Valid) => "действительна",
-        Some(SignatureStatus::Invalid) => "не сходится с содержимым файла",
-        Some(SignatureStatus::Untrusted) => "есть, но Windows не доверяет издателю",
-        Some(SignatureStatus::Unsigned) => "нет",
-        _ => "не удалось проверить",
+        Some(SignatureStatus::Valid) => tr("действительна", "valid"),
+        Some(SignatureStatus::Invalid) => tr("не сходится с содержимым файла", "does not match the file's contents"),
+        Some(SignatureStatus::Untrusted) => tr("есть, но Windows не доверяет издателю", "present, but Windows does not trust the publisher"),
+        Some(SignatureStatus::Unsigned) => tr("нет", "none"),
+        _ => tr("не удалось проверить", "could not be checked"),
     }
 }
 
@@ -198,8 +199,11 @@ fn finding(result: &ScanResult, place: Place) -> Option<Finding> {
         (
             "new-file-signature-broken",
             Severity::High,
-            format!("Файл {name} {located} изменён после подписания"),
-            format!("У этой программы {located} есть цифровая подпись, но она не сходится с содержимым: файл изменили уже после того, как издатель его подписал. Так бывает при оборванной загрузке или копировании, а также когда в чужую программу встраивают посторонний код. Не запускайте файл, пока не разберётесь."),
+            trs(format!("Файл {name} {located} изменён после подписания"), format!("File {name} {located} was changed after it was signed")),
+            trs(
+                format!("У этой программы {located} есть цифровая подпись, но она не сходится с содержимым: файл изменили уже после того, как издатель его подписал. Так бывает при оборванной загрузке или копировании, а также когда в чужую программу встраивают посторонний код. Не запускайте файл, пока не разберётесь."),
+                format!("This program {located} has a digital signature, but it does not match the contents: the file was changed after the publisher signed it. This happens when a download or a copy is cut short, and also when foreign code is built into someone else's program. Do not run the file until you have worked out what happened."),
+            ),
         )
     } else if status == Some(SignatureStatus::Valid) {
         // As with running programs: a valid signature outweighs the model's opinion.
@@ -208,8 +212,11 @@ fn finding(result: &ScanResult, place: Place) -> Option<Finding> {
         (
             "new-file-ml-malicious",
             Severity::Medium,
-            format!("Новый файл {name} {located} похож на вредоносную программу"),
-            format!("Локальная модель оценила строение этой программы {located} как характерное для вредоносных, и у файла нет действительной цифровой подписи. Модель ошибается, особенно на новых и редких программах, поэтому проверьте файл, прежде чем запускать его."),
+            trs(format!("Новый файл {name} {located} похож на вредоносную программу"), format!("New file {name} {located} looks like malware")),
+            trs(
+                format!("Локальная модель оценила строение этой программы {located} как характерное для вредоносных, и у файла нет действительной цифровой подписи. Модель ошибается, особенно на новых и редких программах, поэтому проверьте файл, прежде чем запускать его."),
+                format!("The local model rated the structure of this program {located} as typical of malware, and the file has no valid digital signature. The model makes mistakes, especially with new and rare programs, so check the file before you run it."),
+            ),
         )
     } else if result.verdict == Verdict::Suspicious && place != Place::Temp {
         // Not for the temporary folder: installers unpack there all the time, and at this
@@ -217,20 +224,23 @@ fn finding(result: &ScanResult, place: Place) -> Option<Finding> {
         (
             "new-file-ml-suspicious",
             Severity::Low,
-            format!("Новый файл {name} {located} выглядит подозрительно"),
-            format!("Локальная модель нашла в строении этой программы {located} черты, которые чаще встречаются у вредоносных, и у файла нет действительной цифровой подписи. На этом уровне модель ошибается заметно чаще, чем попадает, так что это повод присмотреться, не больше."),
+            trs(format!("Новый файл {name} {located} выглядит подозрительно"), format!("New file {name} {located} looks suspicious")),
+            trs(
+                format!("Локальная модель нашла в строении этой программы {located} черты, которые чаще встречаются у вредоносных, и у файла нет действительной цифровой подписи. На этом уровне модель ошибается заметно чаще, чем попадает, так что это повод присмотреться, не больше."),
+                format!("The local model found traits in the structure of this program {located} that are more common in malware, and the file has no valid digital signature. At this level the model is wrong noticeably more often than it is right, so this is a reason to take a closer look, nothing more."),
+            ),
         )
     } else {
         return None;
     };
 
-    let mut evidence = vec![("Файл", result.name.clone()), ("Путь", result.path.clone())];
+    let mut evidence = vec![(tr("Файл", "File"), result.name.clone()), (tr("Путь", "Path"), result.path.clone())];
     if let Some(score) = result.score {
-        evidence.push(("Оценка модели", format!("{:.1}%", score * 100.0)));
+        evidence.push((tr("Оценка модели", "Model score"), format!("{:.1}%", score * 100.0)));
     }
-    evidence.push(("Цифровая подпись", signature_text(status).to_string()));
+    evidence.push((tr("Цифровая подпись", "Digital signature"), signature_text(status).to_string()));
     if let Some(host) = source_host(Path::new(&result.path)) {
-        evidence.push(("Скачан с", host));
+        evidence.push((tr("Скачан с", "Downloaded from"), host));
     }
     evidence.push(("SHA-256", result.sha256.clone().unwrap_or_default()));
 

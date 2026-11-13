@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BadgeCheck, ExternalLink, LoaderCircle, Search } from "lucide-react";
 import { ConfirmDialog } from "./ui";
 import { call, formatTime, inTauri, type FileIdentity, type Reputation } from "../lib/api";
+import { tr } from "../lib/i18n";
 
 interface Props {
   /** The file, when it is still in place. */
@@ -20,12 +21,13 @@ function ReputationLine({ reputation }: { reputation: Reputation }) {
   const flagged = reputation.malicious + reputation.suspicious;
   const tone = !reputation.known ? "text-white/60" : reputation.malicious >= 3 ? "text-rose-300" : flagged > 0 ? "text-amber-300" : "text-emerald-300";
   const text = !reputation.known
-    ? "VirusTotal не знает этот файл. Так бывает у новых и редких программ: это не говорит ни за, ни против."
+    ? tr("VirusTotal не знает этот файл. Так бывает у новых и редких программ: это не говорит ни за, ни против.", "VirusTotal does not know this file. This happens with new and rare programs: it counts neither for nor against it.")
     : flagged === 0
-      ? `VirusTotal: ни один из ${reputation.total} антивирусов не считает файл опасным.`
-      : `VirusTotal: ${flagged} из ${reputation.total} антивирусов считают файл опасным${reputation.label ? ` (${reputation.label})` : ""}.${
-          reputation.malicious < 3 ? " Одно-два срабатывания часто бывают ложными." : ""
-        }`;
+      ? tr(`VirusTotal: ни один из ${reputation.total} антивирусов не считает файл опасным.`, `VirusTotal: none of ${reputation.total} antivirus engines consider the file dangerous.`)
+      : tr(
+          `VirusTotal: ${flagged} из ${reputation.total} антивирусов считают файл опасным${reputation.label ? ` (${reputation.label})` : ""}.`,
+          `VirusTotal: ${flagged} of ${reputation.total} antivirus engines consider the file dangerous${reputation.label ? ` (${reputation.label})` : ""}.`,
+        ) + (reputation.malicious < 3 ? tr(" Одно-два срабатывания часто бывают ложными.", " One or two detections are often false alarms.") : "");
 
   const open = async () => {
     const url = `https://www.virustotal.com/gui/file/${reputation.sha256}`;
@@ -38,12 +40,12 @@ function ReputationLine({ reputation }: { reputation: Reputation }) {
     <div className="rounded-xl bg-black/20 px-3 py-2.5 text-xs">
       <div className={tone}>{text}</div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 text-white/40">
-        {reputation.analysedAt && <span>Антивирусы проверяли файл {formatTime(reputation.analysedAt)}</span>}
-        <span>Запрошено {formatTime(reputation.checkedAt)}</span>
+        {reputation.analysedAt && <span>{tr(`Антивирусы проверяли файл ${formatTime(reputation.analysedAt)}`, `Antivirus engines scanned the file ${formatTime(reputation.analysedAt)}`)}</span>}
+        <span>{tr(`Запрошено ${formatTime(reputation.checkedAt)}`, `Requested ${formatTime(reputation.checkedAt)}`)}</span>
         {reputation.known && (
           <button onClick={open} className="flex items-center gap-1 text-white/55 hover:text-white/85">
             <ExternalLink size={12} />
-            Открыть отчёт
+            {tr("Открыть отчёт", "Open report")}
           </button>
         )}
       </div>
@@ -96,7 +98,7 @@ export function FileCheck({ path, sha256, incidentId, reputation: stored, canTru
   };
 
   const button = "flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/65 hover:bg-white/8 hover:text-white/90 disabled:opacity-50";
-  const name = path?.split("\\").pop() ?? "файл";
+  const name = path?.split("\\").pop() ?? tr("файл", "file");
   const trusted = identity && (identity.trustedFile || identity.trustedPublisher);
 
   return (
@@ -104,27 +106,27 @@ export function FileCheck({ path, sha256, incidentId, reputation: stored, canTru
       {reputation && <ReputationLine reputation={reputation} />}
       <div className="flex flex-wrap items-center gap-2">
         {!reputation && (
-          <button onClick={check} disabled={busy} className={button} title="В VirusTotal уйдёт только SHA-256 файла, не сам файл">
+          <button onClick={check} disabled={busy} className={button} title={tr("В VirusTotal уйдёт только SHA-256 файла, не сам файл", "Only the file's SHA-256 is sent to VirusTotal, not the file itself")}>
             {busy ? <LoaderCircle size={13} className="animate-spin" /> : <Search size={13} />}
-            Проверить на VirusTotal
+            {tr("Проверить на VirusTotal", "Check on VirusTotal")}
           </button>
         )}
         {trusted && (
           <span className="flex items-center gap-1.5 px-1 text-xs text-emerald-300">
             <BadgeCheck size={14} />
-            {identity.trustedFile ? "Файл в доверенных" : `Издатель ${identity.publisher} в доверенных`}
+            {identity.trustedFile ? tr("Файл в доверенных", "File is trusted") : tr(`Издатель ${identity.publisher} в доверенных`, `Publisher ${identity.publisher} is trusted`)}
           </span>
         )}
         {identity && !trusted && (
           <button onClick={() => setAsking("file")} className={button}>
             <BadgeCheck size={13} />
-            Доверять файлу
+            {tr("Доверять файлу", "Trust file")}
           </button>
         )}
         {identity && !trusted && identity.publisher && (
           <button onClick={() => setAsking("publisher")} className={button}>
             <BadgeCheck size={13} />
-            Доверять издателю {identity.publisher}
+            {tr(`Доверять издателю ${identity.publisher}`, `Trust publisher ${identity.publisher}`)}
           </button>
         )}
         {error && <span className="text-xs text-rose-300">{error}</span>}
@@ -132,9 +134,9 @@ export function FileCheck({ path, sha256, incidentId, reputation: stored, canTru
 
       {asking === "file" && (
         <ConfirmDialog
-          title={`Доверять файлу ${name}?`}
-          body="DefenseR перестанет заводить инциденты об этом файле, пока его содержимое не изменится. Убрать файл из доверенных можно на странице «Реакции»."
-          confirmLabel="Доверять"
+          title={tr(`Доверять файлу ${name}?`, `Trust file ${name}?`)}
+          body={tr("DefenseR перестанет заводить инциденты об этом файле, пока его содержимое не изменится. Убрать файл из доверенных можно на странице «Реакции».", "DefenseR will stop raising incidents about this file until its contents change. You can remove the file from trusted on the Responses page.")}
+          confirmLabel={tr("Доверять", "Trust")}
           danger={false}
           onConfirm={() => trust(false)}
           onCancel={() => setAsking(null)}
@@ -142,9 +144,9 @@ export function FileCheck({ path, sha256, incidentId, reputation: stored, canTru
       )}
       {asking === "publisher" && identity?.publisher && (
         <ConfirmDialog
-          title={`Доверять издателю ${identity.publisher}?`}
-          body="DefenseR перестанет заводить инциденты обо всех программах с действительной подписью этого издателя — и уже установленных, и будущих. Убрать издателя из доверенных можно на странице «Реакции»."
-          confirmLabel="Доверять издателю"
+          title={tr(`Доверять издателю ${identity.publisher}?`, `Trust publisher ${identity.publisher}?`)}
+          body={tr("DefenseR перестанет заводить инциденты обо всех программах с действительной подписью этого издателя — и уже установленных, и будущих. Убрать издателя из доверенных можно на странице «Реакции».", "DefenseR will stop raising incidents about all programs with this publisher's valid signature — both those already installed and future ones. You can remove the publisher from trusted on the Responses page.")}
+          confirmLabel={tr("Доверять издателю", "Trust publisher")}
           danger={false}
           onConfirm={() => trust(true)}
           onCancel={() => setAsking(null)}

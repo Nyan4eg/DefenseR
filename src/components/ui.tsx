@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Search, TriangleAlert } from "lucide-react";
 import { FLAG_LABELS } from "../lib/api";
+import { tr } from "../lib/i18n";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
@@ -106,7 +107,7 @@ export function ConfirmDialog({ title, body, confirmLabel, danger, onConfirm, on
         <p className="mt-2 text-sm leading-relaxed text-white/60">{body}</p>
         <div className="mt-5 flex justify-end gap-2">
           <button autoFocus onClick={onCancel} className="rounded-lg bg-white/8 px-4 py-1.5 text-sm text-white/75 hover:bg-white/12">
-            Отмена
+            {tr("Отмена", "Cancel")}
           </button>
           <button
             onClick={onConfirm}
@@ -124,5 +125,5 @@ export function ConfirmDialog({ title, body, confirmLabel, danger, onConfirm, on
 }
 
 export function Loading() {
-  return <div className="p-10 text-center text-sm text-white/40">Сбор данных…</div>;
+  return <div className="p-10 text-center text-sm text-white/40">{tr("Сбор данных…", "Collecting data…")}</div>;
 }

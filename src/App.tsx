@@ -20,7 +20,7 @@ import {
   type ScanResult,
 } from "./lib/api";
 import { ScanPage, type ScanRequest, type ScanState } from "./pages/ScanPage";
-import { applyLang } from "./lib/i18n";
+import { applyLang, tr } from "./lib/i18n";
 import { ResponsesPage } from "./pages/ResponsesPage";
 import { assess } from "./lib/score";
 import { OverviewPage, type Sample } from "./pages/OverviewPage";
@@ -33,14 +33,14 @@ import { SettingsPage } from "./pages/SettingsPage";
 type PageId = "overview" | "incidents" | "scan" | "responses" | "processes" | "network" | "autostart" | "settings";
 
 const NAV = [
-  { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "incidents", label: "Инциденты", icon: ShieldAlert },
-  { id: "scan", label: "Проверка файлов", icon: FileSearch },
-  { id: "responses", label: "Реакции", icon: Lock },
-  { id: "processes", label: "Процессы", icon: Activity },
-  { id: "network", label: "Сеть", icon: Network },
-  { id: "autostart", label: "Автозагрузка", icon: Rocket },
-  { id: "settings", label: "Настройки", icon: Settings },
+  { id: "overview", label: tr("Обзор", "Overview"), icon: LayoutDashboard },
+  { id: "incidents", label: tr("Инциденты", "Incidents"), icon: ShieldAlert },
+  { id: "scan", label: tr("Проверка файлов", "File scan"), icon: FileSearch },
+  { id: "responses", label: tr("Реакции", "Responses"), icon: Lock },
+  { id: "processes", label: tr("Процессы", "Processes"), icon: Activity },
+  { id: "network", label: tr("Сеть", "Network"), icon: Network },
+  { id: "autostart", label: tr("Автозагрузка", "Startup"), icon: Rocket },
+  { id: "settings", label: tr("Настройки", "Settings"), icon: Settings },
 ] as const;
 
 const OVERVIEW_INTERVAL_MS = 2000;
@@ -99,7 +99,7 @@ export default function App() {
   }, []);
 
   const startScan = useCallback((request: ScanRequest) => {
-    const label = request.kind === "processes" ? "Запущенные программы" : "Выбранные файлы";
+    const label = request.kind === "processes" ? tr("Запущенные программы", "Running programs") : tr("Выбранные файлы", "Selected files");
     setScan((prev) => ({ ...prev, busy: true, progress: null, error: null }));
     const pending =
       request.kind === "processes" ? call<ScanResult[]>("scan_processes") : call<ScanResult[]>("scan_paths", { paths: request.paths });
@@ -151,7 +151,7 @@ export default function App() {
         <div className="mt-auto rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-xs">
           <div className="flex items-center gap-2">
             <span className={`size-2 rounded-full ${activeIncidents > 0 ? "bg-amber-400" : "bg-emerald-400"}`} />
-            <span className="text-white/70">{activeIncidents > 0 ? `Инцидентов: ${activeIncidents}` : "Мониторинг активен"}</span>
+            <span className="text-white/70">{activeIncidents > 0 ? tr(`Инцидентов: ${activeIncidents}`, `Incidents: ${activeIncidents}`) : tr("Мониторинг активен", "Monitoring is active")}</span>
           </div>
           <div className="mt-1 truncate text-white/35">{overview?.hostName ?? "…"}</div>
         </div>

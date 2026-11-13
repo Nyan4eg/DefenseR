@@ -14,10 +14,16 @@ use winreg::enums::{RegType, HKEY_CURRENT_USER, KEY_SET_VALUE};
 use winreg::{RegKey, RegValue};
 
 use crate::collectors::autostart::{startup_folders, RUN_KEYS};
+use crate::lang::{tr, trs};
 use crate::responses::move_file;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const CANCELLED: &str = "Действие отменено: для записей всех пользователей нужно подтвердить запрос Windows.";
+fn cancelled() -> &'static str {
+    tr(
+        "Действие отменено: для записей всех пользователей нужно подтвердить запрос Windows.",
+        "Action cancelled: entries for all users require confirming the Windows prompt.",
+    )
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -71,11 +77,11 @@ fn elevated(body: &str, data: &serde_json::Value) -> Result<(), String> {
         .env("DEFENSER_ELEVATED", encoded_script(body, data))
         .creation_flags(CREATE_NO_WINDOW)
         .status()
-        .map_err(|e| format!("Не удалось запустить PowerShell: {e}"))?;
+        .map_err(|e| trs(format!("Не удалось запустить PowerShell: {e}"), format!("Could not start PowerShell: {e}")))?;
     match status.code() {
         Some(0) => Ok(()),
-        Some(740) => Err(CANCELLED.to_string()),
-        _ => Err("Windows не дала изменить запись автозагрузки.".to_string()),
+        Some(740) => Err(cancelled().to_string()),
+        _ => Err(tr("Windows не дала изменить запись автозагрузки.", "Windows did not allow the startup entry to be changed.").to_string()),
     }
 }
 
@@ -93,8 +99,8 @@ fn run_key(source: &str) -> Option<(RegKey, bool, &'static str)> {
 
 fn describe(error: &std::io::Error) -> String {
     match error.kind() {
-        std::io::ErrorKind::NotFound => "Запись уже исчезла из автозагрузки.".to_string(),
-        std::io::ErrorKind::PermissionDenied => "Нет доступа к записи автозагрузки.".to_string(),
+        std::io::ErrorKind::NotFound => tr("Запись уже исчезла из автозагрузки.", "The entry is no longer in startup.").to_string(),
+        std::io::ErrorKind::PermissionDenied => tr("Нет доступа к записи автозагрузки.", "No access to the startup entry.").to_string(),
         _ => error.to_string(),
     }
 }
@@ -122,7 +128,7 @@ pub fn disable(dir: &Path, source: &str, name: &str, now: u64) -> Result<Disable
         let key = hive.open_subkey(path).map_err(|e| describe(&e))?;
         let raw = key.get_raw_value(name).map_err(|e| describe(&e))?;
         if !matches!(raw.vtype, RegType::REG_SZ | RegType::REG_EXPAND_SZ) {
-            return Err("Запись хранится в необычном виде; DefenseR не сможет вернуть её точно, поэтому не трогает.".to_string());
+            return Err(tr("Запись хранится в необычном виде; DefenseR не сможет вернуть её точно, поэтому не трогает.", "The entry is stored in an unusual form; DefenseR could not restore it exactly, so it leaves it alone.").to_string());
         }
         item.command = key.get_value(name).map_err(|e| describe(&e))?;
         item.expand = raw.vtype == RegType::REG_EXPAND_SZ;
@@ -134,7 +140,7 @@ pub fn disable(dir: &Path, source: &str, name: &str, now: u64) -> Result<Disable
             elevated(DELETE_VALUE, &json!({ "path": path, "name": name }))?;
         }
         if key.get_raw_value(name).is_ok() {
-            return Err("Запись осталась в автозагрузке.".to_string());
+            return Err(tr("Запись осталась в автозагрузке.", "The entry is still in startup.").to_string());
         }
         return Ok(item);
     }
@@ -142,13 +148,13 @@ pub fn disable(dir: &Path, source: &str, name: &str, now: u64) -> Result<Disable
     let (folder, scope) = startup_folders()
         .into_iter()
         .find(|(folder, _)| source.eq_ignore_ascii_case(&folder.to_string_lossy()))
-        .ok_or("Неизвестный источник автозагрузки.")?;
+        .ok_or(tr("Неизвестный источник автозагрузки.", "Unknown startup source."))?;
     if name.contains(['\\', '/']) || name == ".." {
-        return Err("Недопустимое имя записи.".to_string());
+        return Err(tr("Недопустимое имя записи.", "Invalid entry name.").to_string());
     }
     let file = folder.join(name);
     if !file.is_file() {
-        return Err("Запись уже исчезла из автозагрузки.".to_string());
+        return Err(tr("Запись уже исчезла из автозагрузки.", "The entry is no longer in startup.").to_string());
     }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let to = held(dir, &item.id);
@@ -161,7 +167,7 @@ pub fn disable(dir: &Path, source: &str, name: &str, now: u64) -> Result<Disable
         elevated(MOVE_FILE, &json!({ "from": file, "to": to }))?;
     }
     if file.exists() || !to.exists() {
-        return Err("Файл остался в папке автозагрузки.".to_string());
+        return Err(tr("Файл остался в папке автозагрузки.", "The file is still in the startup folder.").to_string());
     }
     Ok(item)
 }
@@ -171,7 +177,7 @@ pub fn enable(dir: &Path, item: &Disabled) -> Result<(), String> {
     if item.file {
         let original = Path::new(&item.command);
         if original.exists() {
-            return Err("В папке автозагрузки уже есть файл с таким именем.".to_string());
+            return Err(tr("В папке автозагрузки уже есть файл с таким именем.", "A file with this name already exists in the startup folder.").to_string());
         }
         let from = held(dir, &item.id);
         if item.scope == "user" {
@@ -179,13 +185,13 @@ pub fn enable(dir: &Path, item: &Disabled) -> Result<(), String> {
         } else {
             elevated(MOVE_FILE, &json!({ "from": from, "to": original }))?;
         }
-        return if original.exists() { Ok(()) } else { Err("Не удалось вернуть файл в папку автозагрузки.".to_string()) };
+        return if original.exists() { Ok(()) } else { Err(tr("Не удалось вернуть файл в папку автозагрузки.", "The file could not be returned to the startup folder.").to_string()) };
     }
 
-    let (hive, user, path) = run_key(&item.source).ok_or("Неизвестный источник автозагрузки.")?;
+    let (hive, user, path) = run_key(&item.source).ok_or(tr("Неизвестный источник автозагрузки.", "Unknown startup source."))?;
     let key = hive.open_subkey(path).map_err(|e| describe(&e))?;
     if key.get_raw_value(&item.name).is_ok() {
-        return Err("Запись с таким именем уже есть в автозагрузке.".to_string());
+        return Err(tr("Запись с таким именем уже есть в автозагрузке.", "An entry with this name already exists in startup.").to_string());
     }
     if user {
         let writable = hive.open_subkey_with_flags(path, KEY_SET_VALUE).map_err(|e| describe(&e))?;
@@ -196,7 +202,7 @@ pub fn enable(dir: &Path, item: &Disabled) -> Result<(), String> {
         let kind = if item.expand { "ExpandString" } else { "String" };
         elevated(SET_VALUE, &json!({ "path": path, "name": item.name, "command": item.command, "kind": kind }))?;
     }
-    if key.get_raw_value(&item.name).is_ok() { Ok(()) } else { Err("Не удалось вернуть запись в автозагрузку.".to_string()) }
+    if key.get_raw_value(&item.name).is_ok() { Ok(()) } else { Err(tr("Не удалось вернуть запись в автозагрузку.", "The entry could not be returned to startup.").to_string()) }
 }
 
 /// Deletes the kept Startup file of an entry the user does not want back.

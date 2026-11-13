@@ -3,13 +3,14 @@ import { ChevronDown } from "lucide-react";
 import { ProcessActions } from "../components/ProcessActions";
 import { Card, FlagBadges, Loading, PageHeader, SearchInput, Tabs } from "../components/ui";
 import { formatBytes, type ProcessInfo } from "../lib/api";
+import { tr } from "../lib/i18n";
 
 type SortKey = "cpu" | "memory" | "name";
 
 const SORT_OPTIONS: { id: SortKey; label: string }[] = [
-  { id: "cpu", label: "По процессору" },
-  { id: "memory", label: "По памяти" },
-  { id: "name", label: "По имени" },
+  { id: "cpu", label: tr("По процессору", "By CPU") },
+  { id: "memory", label: tr("По памяти", "By memory") },
+  { id: "name", label: tr("По имени", "By name") },
 ];
 
 interface Props {
@@ -39,10 +40,20 @@ export function ProcessesPage({ processes, onChanged }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Процессы" subtitle={processes ? `Запущено: ${processes.length} · нажмите на строку, чтобы увидеть действия` : "Сбор данных…"}>
+      <PageHeader
+        title={tr("Процессы", "Processes")}
+        subtitle={
+          processes
+            ? tr(
+                `Запущено: ${processes.length} · нажмите на строку, чтобы увидеть действия`,
+                `Running: ${processes.length} · click a row to see the actions`,
+              )
+            : tr("Сбор данных…", "Collecting data…")
+        }
+      >
         <div className="flex gap-3">
           <Tabs value={sort} onChange={setSort} options={SORT_OPTIONS} />
-          <SearchInput value={query} onChange={setQuery} placeholder="Имя, путь или PID" />
+          <SearchInput value={query} onChange={setQuery} placeholder={tr("Имя, путь или PID", "Name, path or PID")} />
         </div>
       </PageHeader>
 
@@ -53,11 +64,11 @@ export function ProcessesPage({ processes, onChanged }: Props) {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-[#10151c] text-left text-xs text-white/45">
               <tr>
-                <th className="px-4 py-2.5 font-medium">Процесс</th>
+                <th className="px-4 py-2.5 font-medium">{tr("Процесс", "Process")}</th>
                 <th className="px-3 py-2.5 font-medium">PID</th>
-                <th className="px-3 py-2.5 text-right font-medium">ЦП</th>
-                <th className="px-3 py-2.5 text-right font-medium">Память</th>
-                <th className="px-4 py-2.5 font-medium">Путь</th>
+                <th className="px-3 py-2.5 text-right font-medium">{tr("ЦП", "CPU")}</th>
+                <th className="px-3 py-2.5 text-right font-medium">{tr("Память", "Memory")}</th>
+                <th className="px-4 py-2.5 font-medium">{tr("Путь", "Path")}</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -78,7 +89,7 @@ export function ProcessesPage({ processes, onChanged }: Props) {
                     <td className="px-3 py-2 text-right tabular-nums">{p.cpu.toFixed(1)}%</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatBytes(p.memory)}</td>
                     <td className="max-w-0 w-1/2 truncate px-4 py-2 text-white/45" title={p.exe ?? ""}>
-                      {p.exe ?? "нет доступа"}
+                      {p.exe ?? tr("нет доступа", "no access")}
                     </td>
                     <td className="py-2 pr-3">
                       <ChevronDown size={15} className={`text-white/30 transition-transform ${open === p.pid ? "rotate-180" : ""}`} />

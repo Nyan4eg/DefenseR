@@ -3,18 +3,19 @@ import { ChevronDown } from "lucide-react";
 import { ProcessActions } from "../components/ProcessActions";
 import { Badge, Card, Loading, PageHeader, Tabs } from "../components/ui";
 import type { Connection, ProcessInfo } from "../lib/api";
+import { tr } from "../lib/i18n";
 
 type Filter = "external" | "listening" | "all";
 
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: "external", label: "Внешние" },
-  { id: "listening", label: "Открытые порты" },
-  { id: "all", label: "Все" },
+  { id: "external", label: tr("Внешние", "External") },
+  { id: "listening", label: tr("Открытые порты", "Open ports") },
+  { id: "all", label: tr("Все", "All") },
 ];
 
 const STATE_LABELS: Record<string, string> = {
-  ESTABLISHED: "Установлено",
-  LISTEN: "Ожидает подключений",
+  ESTABLISHED: tr("Установлено", "Established"),
+  LISTEN: tr("Ожидает подключений", "Waiting for connections"),
 };
 
 function isListening(c: Connection): boolean {
@@ -56,8 +57,15 @@ export function NetworkPage({ connections, processes, onChanged }: Props) {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Сеть"
-        subtitle={connections ? `Соединений с интернетом: ${external} · всего сокетов: ${connections.length} · нажмите на строку, чтобы увидеть действия` : "Сбор данных…"}
+        title={tr("Сеть", "Network")}
+        subtitle={
+          connections
+            ? tr(
+                `Соединений с интернетом: ${external} · всего сокетов: ${connections.length} · нажмите на строку, чтобы увидеть действия`,
+                `Internet connections: ${external} · sockets in total: ${connections.length} · click a row to see the actions`,
+              )
+            : tr("Сбор данных…", "Collecting data…")
+        }
       >
         <Tabs value={filter} onChange={setFilter} options={FILTERS} />
       </PageHeader>
@@ -66,16 +74,16 @@ export function NetworkPage({ connections, processes, onChanged }: Props) {
         {!connections ? (
           <Loading />
         ) : rows.length === 0 ? (
-          <div className="p-10 text-center text-sm text-white/40">Соединений нет</div>
+          <div className="p-10 text-center text-sm text-white/40">{tr("Соединений нет", "No connections")}</div>
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-[#10151c] text-left text-xs text-white/45">
               <tr>
-                <th className="px-4 py-2.5 font-medium">Процесс</th>
-                <th className="px-3 py-2.5 font-medium">Протокол</th>
-                <th className="px-3 py-2.5 font-medium">Локальный адрес</th>
-                <th className="px-3 py-2.5 font-medium">Удалённый адрес</th>
-                <th className="px-4 py-2.5 font-medium">Состояние</th>
+                <th className="px-4 py-2.5 font-medium">{tr("Процесс", "Process")}</th>
+                <th className="px-3 py-2.5 font-medium">{tr("Протокол", "Protocol")}</th>
+                <th className="px-3 py-2.5 font-medium">{tr("Локальный адрес", "Local address")}</th>
+                <th className="px-3 py-2.5 font-medium">{tr("Удалённый адрес", "Remote address")}</th>
+                <th className="px-4 py-2.5 font-medium">{tr("Состояние", "State")}</th>
                 <th className="w-8" />
               </tr>
             </thead>

@@ -10,6 +10,7 @@ use tauri::{App, AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::incidents::{Incident, Severity};
+use crate::lang::{tr, trs};
 use crate::{lock, AppState};
 
 /// Passed by the autostart entry: start in the tray without showing the window.
@@ -99,7 +100,7 @@ pub fn hide_to_tray(app: &AppHandle) {
     if !store.settings.tray_hint_shown {
         store.settings.tray_hint_shown = true;
         store.save();
-        notify(app, "DefenseR работает в фоне", "Мониторинг продолжается. Открыть окно или выйти можно через значок в области уведомлений.");
+        notify(app, tr("DefenseR работает в фоне", "DefenseR is running in the background"), tr("Мониторинг продолжается. Открыть окно или выйти можно через значок в области уведомлений.", "Monitoring continues. Use the icon in the notification area to open the window or quit."));
     }
 }
 
@@ -111,12 +112,12 @@ pub fn notify_incidents(app: &AppHandle, new: &[Incident]) {
     }
     match important.as_slice() {
         [incident] => {
-            let title = if incident.severity == Severity::High { "DefenseR: важный инцидент" } else { "DefenseR: новый инцидент" };
+            let title = if incident.severity == Severity::High { tr("DefenseR: важный инцидент", "DefenseR: important incident") } else { tr("DefenseR: новый инцидент", "DefenseR: new incident") };
             notify(app, title, &incident.title);
         }
         many => {
             let titles: Vec<&str> = many.iter().take(3).map(|incident| incident.title.as_str()).collect();
-            notify(app, &format!("DefenseR: новых инцидентов — {}", many.len()), &titles.join("\n"));
+            notify(app, &trs(format!("DefenseR: новых инцидентов — {}", many.len()), format!("DefenseR: {} new incidents", many.len())), &titles.join("\n"));
         }
     }
 }
@@ -128,12 +129,12 @@ fn quit(app: &AppHandle) {
 }
 
 pub fn setup_tray(app: &App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Открыть DefenseR", true, None::<&str>)?;
-    let exit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", tr("Открыть DefenseR", "Open DefenseR"), true, None::<&str>)?;
+    let exit = MenuItem::with_id(app, "quit", tr("Выход", "Quit"), true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &exit])?;
 
     let mut tray = TrayIconBuilder::new()
-        .tooltip("DefenseR — мониторинг активен")
+        .tooltip(tr("DefenseR — мониторинг активен", "DefenseR — monitoring is active"))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
