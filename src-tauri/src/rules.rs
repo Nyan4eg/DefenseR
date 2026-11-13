@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::collectors::autostart::AutostartEntry;
 use crate::collectors::extensions::Extension;
+use crate::collectors::netconfig::{self, NetConfig};
 use crate::collectors::processes::ProcessInfo;
 use crate::collectors::protection::ProtectionStatus;
 use crate::incidents::{Evidence, Finding, Severity, Target};
@@ -249,6 +250,79 @@ pub fn extension_rules(extensions: &[Extension], baseline: Option<&HashSet<Strin
                 (tr("Доступ", "Access"), reach),
                 (tr("Где удалить", "Where to remove"), &extension.manage_url),
             ]),
+            target: None,
+            timeline: Vec::new(),
+        });
+    }
+}
+
+/// Redirects in the hosts file and proxy settings that were not there at the baseline.
+pub fn netconfig_rules(config: &NetConfig, baseline: Option<&HashSet<String>>, findings: &mut Vec<Finding>) {
+    let Some(known) = baseline else {
+        return;
+    };
+
+    let redirects: Vec<_> = config.hosts.iter().filter(|entry| !entry.blocks && !known.contains(&netconfig::redirect_key(entry))).collect();
+    if !redirects.is_empty() {
+        let list: Vec<String> = redirects.iter().take(12).map(|entry| format!("{} → {}", entry.name, entry.address)).collect();
+        let more = redirects.len().saturating_sub(list.len());
+        let shown = if more > 0 { format!("{}; {}", list.join("; "), trs(format!("и ещё {more}"), format!("and {more} more"))) } else { list.join("; ") };
+        findings.push(Finding {
+            id: "hosts-redirect-new".to_string(),
+            rule: "hosts-redirect-new",
+            severity: Severity::High,
+            title: trs(
+                format!("В файле hosts появились перенаправления: {}", redirects.len()),
+                format!("New redirects appeared in the hosts file: {}", redirects.len()),
+            ),
+            summary: tr(
+                "Файл hosts говорит Windows, по какому адресу искать сайт, и имеет приоритет над интернетом. Запись в нём может незаметно отправить вас на поддельную копию сайта. Такие записи добавляют и обычные программы (для разработки, для домашней сети), но если вы этого не делали — откройте файл в Блокноте от имени администратора и удалите лишние строки.",
+                "The hosts file tells Windows which address to look for a site at, and it takes priority over the internet. An entry in it can quietly send you to a fake copy of a site. Ordinary programs add such entries too (for development, for a home network), but if you did not do this, open the file in Notepad as administrator and delete the extra lines.",
+            )
+            .to_string(),
+            evidence: evidence(&[(tr("Новые записи", "New entries"), &shown), (tr("Файл", "File"), &config.hosts_path)]),
+            target: None,
+            timeline: Vec::new(),
+        });
+    }
+
+    if let Some(server) = config.proxy_server.as_deref().filter(|server| config.proxy_enabled && !known.contains(&netconfig::proxy_key(server))) {
+        let local = netconfig::proxy_is_local(server);
+        findings.push(Finding {
+            id: format!("proxy-new|{}", server.to_lowercase()),
+            rule: "proxy-new",
+            severity: if local { Severity::Low } else { Severity::High },
+            title: trs(format!("Включён системный прокси {server}"), format!("A system proxy was turned on: {server}")),
+            summary: if local {
+                tr(
+                    "Запросы браузеров и программ теперь идут через программу на этом компьютере. Так работают VPN-клиенты, антивирусы и средства отладки; так же может встать и перехватчик трафика. Проверить и отключить: Параметры Windows → Сеть и Интернет → Прокси-сервер.",
+                    "Requests from browsers and programs now go through a program on this computer. VPN clients, antivirus products and debugging tools work this way; so can a traffic interceptor. To check and turn it off: Windows Settings → Network & internet → Proxy.",
+                )
+            } else {
+                tr(
+                    "Запросы браузеров и программ теперь идут через чужой сервер: он видит, какие сайты вы открываете, и может подменять их содержимое. Если вы не настраивали прокси сами (например, рабочий), отключите его: Параметры Windows → Сеть и Интернет → Прокси-сервер.",
+                    "Requests from browsers and programs now go through someone else's server: it sees which sites you open and can change what they show. If you did not set up a proxy yourself (a work one, for example), turn it off: Windows Settings → Network & internet → Proxy.",
+                )
+            }
+            .to_string(),
+            evidence: evidence(&[(tr("Прокси-сервер", "Proxy server"), server)]),
+            target: None,
+            timeline: Vec::new(),
+        });
+    }
+
+    if let Some(script) = config.proxy_script.as_deref().filter(|script| !known.contains(&netconfig::script_key(script))) {
+        findings.push(Finding {
+            id: format!("proxy-script-new|{}", script.to_lowercase()),
+            rule: "proxy-script-new",
+            severity: Severity::Medium,
+            title: tr("Появился сценарий настройки прокси", "A proxy setup script appeared").to_string(),
+            summary: tr(
+                "Windows теперь спрашивает у этого адреса, через какой сервер отправлять каждый запрос. Так настраивают сеть в организациях; так же вредоносные программы направляют через себя трафик к отдельным сайтам, например банковским. Проверить и убрать: Параметры Windows → Сеть и Интернет → Прокси-сервер.",
+                "Windows now asks this address which server to send each request through. Organisations set up their networks this way; malware uses the same thing to route traffic to particular sites, such as banks, through itself. To check and remove it: Windows Settings → Network & internet → Proxy.",
+            )
+            .to_string(),
+            evidence: evidence(&[(tr("Адрес сценария", "Script address"), script)]),
             target: None,
             timeline: Vec::new(),
         });

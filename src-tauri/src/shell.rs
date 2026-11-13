@@ -48,11 +48,14 @@ pub struct Settings {
     /// The "still running in the tray" hint has been shown once.
     #[serde(default)]
     pub tray_hint_shown: bool,
+    /// The first-run introduction has been read.
+    #[serde(default)]
+    pub welcome_shown: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { notifications: true, watch_downloads: true, watch_temp: true, watch_removable: true, auto_virustotal: false, language: None, auto_update: true, tray_hint_shown: false }
+        Self { notifications: true, watch_downloads: true, watch_temp: true, watch_removable: true, auto_virustotal: false, language: None, auto_update: true, tray_hint_shown: false, welcome_shown: false }
     }
 }
 

@@ -5,6 +5,7 @@ import {
   call,
   inTauri,
   usePolling,
+  type WeekActivity,
   type AiStatus,
   type AppSettings,
   type AutostartEntry,
@@ -12,6 +13,7 @@ import {
   type Connection,
   type Incident,
   type ModelInfo,
+  type NetConfig,
   type Overview,
   type ProcessInfo,
   type ProfileStatus,
@@ -20,6 +22,7 @@ import {
   type ScanProgress,
   type ScanResult,
 } from "./lib/api";
+import { Welcome } from "./components/Welcome";
 import { ScanPage, type ScanRequest, type ScanState } from "./pages/ScanPage";
 import { applyLang, tr } from "./lib/i18n";
 import { ResponsesPage } from "./pages/ResponsesPage";
@@ -69,6 +72,9 @@ export default function App() {
   const profile = usePolling<ProfileStatus>("get_profile_status", 30_000);
   const responses = usePolling<ResponsesState>("get_responses", 15_000, refreshKey);
   const extensions = usePolling<BrowserExtension[]>("get_extensions", 60_000, refreshKey);
+  const netConfig = usePolling<NetConfig>("get_netconfig", 30_000);
+  const activity = usePolling<WeekActivity>("get_activity", 60_000, refreshKey);
+  const [welcome, setWelcome] = useState(false);
   const activeIncidents = incidents?.filter((i) => i.status === "active").length ?? 0;
 
   // Scan state lives here so a scan keeps running, and its results stay, while other pages are open.
@@ -77,7 +83,10 @@ export default function App() {
 
   useEffect(() => {
     call<AppSettings>("get_settings")
-      .then((settings) => applyLang(settings.language))
+      .then((settings) => {
+        applyLang(settings.language);
+        setWelcome(settings.welcomeShown === false);
+      })
       .catch(() => {});
   }, []);
 
@@ -172,7 +181,7 @@ export default function App() {
             className="h-full overflow-auto p-7"
           >
             {page === "overview" && (
-              <OverviewPage overview={overview} processes={processes} connections={connections} incidents={incidents} assessment={assessment} history={history} onNavigate={setPage} />
+              <OverviewPage overview={overview} processes={processes} connections={connections} incidents={incidents} assessment={assessment} history={history} activity={activity} watching={{ autostart: autostart?.length ?? null, extensions: extensions?.length ?? null }} onNavigate={setPage} />
             )}
             {page === "incidents" && (
               <IncidentsPage incidents={incidents} profile={profile} hasKey={hasKey} onChanged={refresh} onOpenSettings={() => setPage("settings")} />
@@ -181,12 +190,20 @@ export default function App() {
             {page === "responses" && <ResponsesPage responses={responses} onChanged={refresh} />}
             {page === "settings" && <SettingsPage hasKey={hasKey} onChanged={refresh} />}
             {page === "processes" && <ProcessesPage processes={processes} onChanged={refresh} />}
-            {page === "network" && <NetworkPage connections={connections} processes={processes} onChanged={refresh} />}
+            {page === "network" && <NetworkPage connections={connections} processes={processes} netConfig={netConfig} onChanged={refresh} />}
             {page === "autostart" && <AutostartPage autostart={autostart} responses={responses} onChanged={refresh} />}
             {page === "extensions" && <ExtensionsPage extensions={extensions} onChanged={refresh} />}
           </motion.div>
         </AnimatePresence>
       </main>
+      {welcome && (
+        <Welcome
+          onClose={() => {
+            setWelcome(false);
+            call("set_option", { name: "welcomeShown", enabled: true }).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

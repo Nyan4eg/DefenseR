@@ -1,5 +1,6 @@
 pub mod autostart;
 pub mod extensions;
+pub mod netconfig;
 pub mod network;
 pub mod persistence;
 pub mod processes;

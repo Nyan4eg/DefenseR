@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { ArrowUpRight, BadgeCheck, ChevronDown, DoorOpen, Globe, Network, Router, ShieldQuestion, Unplug } from "lucide-react";
 import { Avatar, Chip, EmptyState, friendlyName, Rise, StatTile } from "../components/kit";
+import { NetConfigCard } from "../components/NetConfigCard";
 import { ProcessActions } from "../components/ProcessActions";
 import { Card, Loading, PageHeader } from "../components/ui";
-import type { Connection, ProcessInfo } from "../lib/api";
+import type { Connection, NetConfig, ProcessInfo } from "../lib/api";
 import { tr } from "../lib/i18n";
 
 type Filter = "internet" | "listening" | "all";
@@ -177,11 +178,12 @@ function ProgramRow({ group, open, onToggle, onChanged }: { group: Group; open: 
 interface Props {
   connections: Connection[] | null;
   processes: ProcessInfo[] | null;
+  netConfig: NetConfig | null;
   /** Called after a response action, so lists elsewhere refresh. */
   onChanged: () => void;
 }
 
-export function NetworkPage({ connections, processes, onChanged }: Props) {
+export function NetworkPage({ connections, processes, netConfig, onChanged }: Props) {
   const [filter, setFilter] = useState<Filter>("internet");
   /** The program whose row is expanded. */
   const [open, setOpen] = useState<string | null>(null);
@@ -232,6 +234,8 @@ export function NetworkPage({ connections, processes, onChanged }: Props) {
           active={filter === "all"}
         />
       </div>
+
+      <NetConfigCard config={netConfig} />
 
       <div className="mb-3 flex items-center gap-4 px-1 text-xs text-white/40">
         <span className="flex items-center gap-1.5">

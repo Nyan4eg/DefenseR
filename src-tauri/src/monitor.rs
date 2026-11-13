@@ -6,7 +6,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::collectors::autostart::AutostartEntry;
 use crate::collectors::processes::ProcessInfo;
-use crate::collectors::{autostart, extensions, network, persistence, processes};
+use crate::collectors::{autostart, extensions, netconfig, network, persistence, processes};
 use crate::incidents::{AutostartRef, Evidence, Finding, Severity, Target};
 use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
@@ -247,9 +247,11 @@ pub fn run(app: AppHandle) {
         let running: HashSet<String> = processes.iter().filter_map(|process| process.exe.as_ref()).map(|exe| exe.to_lowercase()).collect();
         file_findings.extend(scan_startup_files(&state, &autostart, &running));
         let browser_extensions = extensions::collect();
+        let net_config = netconfig::collect();
 
         let now = now_secs();
         let settings = lock(&state.settings).settings.clone();
+        let files_before = lock(&state.downloads).status().checked;
         let download_findings = downloads::check(&state.downloads, &state.scanner, now, |place| match place {
             Place::Downloads | Place::Desktop => settings.watch_downloads,
             Place::Temp => settings.watch_temp,
@@ -265,7 +267,17 @@ pub fn run(app: AppHandle) {
         let behavior_findings = {
             let has_signature = |exe: &str| state.scanner.cached(Path::new(exe)).and_then(|r| r.signature).map(|s| s.status == SignatureStatus::Valid);
             let mut profile = lock(&state.profile);
+            let before = profile.status();
             let findings = profile.observe(&processes, &connections, now, now.saturating_sub(last_pass), has_signature);
+            let after = profile.status();
+            // While the profile is still learning, everything is new to it; that is not news.
+            let (programs, online) = if before.learning { (0, 0) } else { (after.programs.saturating_sub(before.programs) as u64, after.network_programs.saturating_sub(before.network_programs) as u64) };
+            let files = lock(&state.downloads).status().checked.saturating_sub(files_before);
+            let mut activity = lock(&state.activity);
+            activity.record(now, now.saturating_sub(last_pass), files, programs, online);
+            if passes % PROFILE_SAVE_EVERY == 0 {
+                activity.save();
+            }
             // The profile changes on every pass; writing it once a minute is enough.
             if passes % PROFILE_SAVE_EVERY == 0 {
                 profile.save();
@@ -293,10 +305,12 @@ pub fn run(app: AppHandle) {
         }
 
         let mut store = lock(&state.store);
-        let groups: &[&str] = if tasks_known { &["entry", "service", "extension", "task"] } else { &["entry", "service", "extension"] };
+        let groups: &[&str] = if tasks_known { &["entry", "service", "extension", "netconfig", "task"] } else { &["entry", "service", "extension", "netconfig"] };
         let current = |group: &str| -> Vec<String> {
             if group == "extension" {
                 browser_extensions.iter().map(rules::extension_key).collect()
+            } else if group == "netconfig" {
+                net_config.keys()
             } else {
                 autostart.iter().filter(|entry| rules::baseline_group(entry) == group).map(rules::autostart_key).collect()
             }
@@ -307,6 +321,7 @@ pub fn run(app: AppHandle) {
 
         let snapshot = Snapshot { processes: &processes, autostart: &autostart, protection: &protection };
         let mut findings = rules::evaluate(&snapshot, store.autostart_baseline());
+        rules::netconfig_rules(&net_config, store.autostart_baseline(), &mut findings);
         {
             // Extensions the user said they know are not reported.
             let trust = lock(&state.trust);

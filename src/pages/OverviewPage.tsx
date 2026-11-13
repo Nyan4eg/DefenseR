@@ -20,8 +20,9 @@ import {
 } from "lucide-react";
 import { IconTile, Rise, StatTile } from "../components/kit";
 import { Card, PageHeader } from "../components/ui";
+import { WeekCard } from "../components/WeekCard";
 import { ScoreRing } from "../components/ScoreRing";
-import { formatBytes, formatTime, formatUptime, type Connection, type Incident, type Overview, type ProcessInfo, type Severity } from "../lib/api";
+import { formatBytes, formatTime, formatUptime, type Connection, type Incident, type Overview, type ProcessInfo, type Severity, type WeekActivity } from "../lib/api";
 import { tr } from "../lib/i18n";
 import type { Assessment, Check } from "../lib/score";
 
@@ -137,10 +138,13 @@ interface Props {
   incidents: Incident[] | null;
   assessment: Assessment;
   history: Sample[];
+  activity: WeekActivity | null;
+  /** How many startup entries and browser extensions are being watched. */
+  watching: { autostart: number | null; extensions: number | null };
   onNavigate: (page: OverviewLink) => void;
 }
 
-export function OverviewPage({ overview, processes, connections, incidents, assessment, history, onNavigate }: Props) {
+export function OverviewPage({ overview, processes, connections, incidents, assessment, history, activity, watching, onNavigate }: Props) {
   const cpu = overview?.cpuUsage ?? 0;
   const memoryPercent = overview ? (overview.memoryUsed / overview.memoryTotal) * 100 : 0;
   const external = connections?.filter((c) => c.remoteIsPublic).length ?? 0;
@@ -230,6 +234,8 @@ export function OverviewPage({ overview, processes, connections, incidents, asse
           onClick={() => onNavigate("network")}
         />
       </div>
+
+      <WeekCard activity={activity} watching={{ ...watching, programs: processes ? new Set(processes.map((process) => (process.exe ?? process.name).toLowerCase())).size : null }} />
 
       <Card className="mt-4 p-4">
         <div className="mb-2 flex items-center gap-4 text-xs text-white/50">

@@ -295,7 +295,7 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       trust.extensions = (trust.extensions ?? []).filter((e) => e.key !== args?.id);
       return null;
     case "get_settings":
-      return { notifications: true, watchDownloads: true, watchTemp: true, watchRemovable: true, autoVirustotal: false, language: lang, autoUpdate: true, devBuild: false };
+      return { notifications: true, watchDownloads: true, watchTemp: true, watchRemovable: true, autoVirustotal: false, language: lang, autoUpdate: true, devBuild: false, welcomeShown: location.hash !== "#welcome" };
     case "set_language":
       return null;
     case "get_update_status":
@@ -355,6 +355,30 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       return autostart.map((entry, index) => ({ ...entry, signed: entry.flags.length > 0 ? null : index % 4 !== 2, publisher: index % 4 !== 2 ? "Demo Software LLC" : null, interpreter: entry.command.startsWith("powershell") }));
     case "get_icons":
       return {};
+    case "get_netconfig":
+      return {
+        hosts: [
+          { address: "0.0.0.0", name: "ads.example.com", blocks: true },
+          { address: "0.0.0.0", name: "tracker.example.net", blocks: true },
+          { address: "192.168.1.20", name: "nas.home", blocks: false },
+        ],
+        hostsReadable: true,
+        hostsPath: "C:\\Windows\\System32\\drivers\\etc\\hosts",
+        proxyEnabled: false,
+        proxyServer: null,
+        proxyScript: null,
+      };
+    case "get_activity": {
+      const hour = Math.floor(Date.now() / 3_600_000);
+      const hours = Array.from({ length: 7 * 24 }, (_, index) => hour - index)
+        .filter((h) => {
+          const local = new Date(h * 3_600_000).getHours();
+          return local >= 9 && local <= 23 && (h * 7) % 11 !== 0;
+        })
+        .map((h) => ({ hour: h, watchedSecs: 3600, files: h % 9 === 0 ? 2 : h % 5 === 0 ? 1 : 0, programs: h % 13 === 0 ? 1 : 0, online: h % 29 === 0 ? 1 : 0 }))
+        .reverse();
+      return { since: now - 7 * 86400, hours, incidents: 5, incidentsActive: incidents.filter((i) => i.status === "active").length, incidentsHigh: 1, responses: 4, trusted: 2 };
+    }
     case "get_extensions":
       return [
         { browser: "Chrome", profile: "Default", id: "aaaabbbbccccddddeeeeffffgggghhhh", name: "Demo Ad Blocker", version: "5.2.1", enabled: true, source: "store", allSites: true, permissions: ["webRequest", "tabs", "scripting"], installedAt: now - 86400 * 200, manageUrl: "chrome://extensions/?id=aaaabbbbccccddddeeeeffffgggghhhh" },

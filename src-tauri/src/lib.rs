@@ -1,3 +1,4 @@
+mod activity;
 mod ai;
 mod chains;
 mod collectors;
@@ -21,7 +22,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use collectors::{autostart, extensions, network, processes, protection, system};
+use collectors::{autostart, extensions, netconfig, network, processes, protection, system};
 use serde::Serialize;
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -48,6 +49,7 @@ pub(crate) struct AppState {
     /// VirusTotal answers of this session, by SHA-256.
     pub reputations: Mutex<HashMap<String, vt::Reputation>>,
     icons: icons::Icons,
+    pub activity: Mutex<activity::Store>,
 }
 
 impl AppState {
@@ -157,6 +159,44 @@ fn trust_extension(state: State<'_, AppState>, browser: String, profile: String,
 #[tauri::command(async)]
 fn get_icons(state: State<'_, AppState>, paths: Vec<String>) -> HashMap<String, String> {
     state.icons.get(&paths)
+}
+
+#[tauri::command(async)]
+fn get_netconfig() -> netconfig::NetConfig {
+    netconfig::collect()
+}
+
+/// What DefenseR did over the last seven days.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Activity {
+    /// Unix seconds the summary starts at.
+    since: u64,
+    hours: Vec<activity::Hour>,
+    /// Incidents first seen in the period, and how many of them are still active.
+    incidents: u64,
+    incidents_active: u64,
+    incidents_high: u64,
+    /// Successful response actions by the user in the period.
+    responses: u64,
+    /// Files, publishers and extensions marked as trusted in the period.
+    trusted: u64,
+}
+
+#[tauri::command(async)]
+fn get_activity(state: State<'_, AppState>) -> Activity {
+    let since = monitor::now_secs().saturating_sub(7 * 24 * 3600);
+    let incidents: Vec<incidents::Incident> = lock(&state.store).list().into_iter().filter(|incident| incident.first_seen >= since).collect();
+    let trust = lock(&state.trust).state.clone();
+    Activity {
+        since,
+        hours: lock(&state.activity).since(since),
+        incidents: incidents.len() as u64,
+        incidents_active: incidents.iter().filter(|incident| incident.status == incidents::Status::Active).count() as u64,
+        incidents_high: incidents.iter().filter(|incident| incident.severity == incidents::Severity::High).count() as u64,
+        responses: lock(&state.responses).state.log.iter().filter(|entry| entry.at >= since && entry.error.is_none()).count() as u64,
+        trusted: (trust.files.iter().filter(|file| file.added_at >= since).count() + trust.publishers.iter().filter(|publisher| publisher.added_at >= since).count() + trust.extensions.iter().filter(|extension| extension.added_at >= since).count()) as u64,
+    }
 }
 
 #[tauri::command(async)]
@@ -536,6 +576,8 @@ struct SettingsView {
     language: &'static str,
     /// A development build: its autostart entry would point at a build that needs the dev server.
     dev_build: bool,
+    /// The first-run introduction has been read.
+    welcome_shown: bool,
 }
 
 #[tauri::command(async)]
@@ -550,6 +592,7 @@ fn get_settings(state: State<'_, AppState>) -> SettingsView {
         auto_update: settings.auto_update,
         language: lang::code(),
         dev_build: cfg!(debug_assertions),
+        welcome_shown: settings.welcome_shown,
     }
 }
 
@@ -588,6 +631,7 @@ fn set_option(state: State<'_, AppState>, name: String, enabled: bool) -> Result
         "watchTemp" => store.settings.watch_temp = enabled,
         "watchRemovable" => store.settings.watch_removable = enabled,
         "autoVirustotal" => store.settings.auto_virustotal = enabled,
+        "welcomeShown" => store.settings.welcome_shown = enabled,
         _ => return Err(tr("Неизвестная настройка.", "Unknown setting.").to_string()),
     }
     store.save();
@@ -670,6 +714,7 @@ pub fn run() {
                 chains: Mutex::new(chains::Store::load(data_dir.join("chains.json"))),
                 reputations: Mutex::new(HashMap::new()),
                 icons: icons::Icons::default(),
+                activity: Mutex::new(activity::Store::load(data_dir.join("activity.json"))),
             });
 
             shell::setup_tray(app)?;
@@ -698,6 +743,8 @@ pub fn run() {
             get_overview,
             get_processes,
             get_connections,
+            get_netconfig,
+            get_activity,
             get_autostart,
             get_extensions,
             get_icons,

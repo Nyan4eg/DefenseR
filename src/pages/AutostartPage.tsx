@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BadgeCheck, CalendarClock, ShieldCheck, Clock, Cog, FileCode, FolderOpen, ShieldQuestion, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
+import { BadgeCheck, CalendarClock, Eraser, LoaderCircle, ShieldCheck, Clock, Cog, FileCode, FolderOpen, ShieldQuestion, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
 import { Avatar, Chip, EmptyState, friendlyName, Rise, StatTile, Switch } from "../components/kit";
 import { autostartDialog } from "../components/ResponseActions";
 import { Card, ConfirmDialog, FlagBadges, Loading, PageHeader, SearchInput, Tabs } from "../components/ui";
@@ -55,6 +55,8 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
   const [asking, setAsking] = useState<Row | null>(null);
   const [forgetting, setForgetting] = useState<Row | null>(null);
   const [trusting, setTrusting] = useState<Row | null>(null);
+  /** The leftovers about to be turned off in one go; `done` counts while it runs. */
+  const [sweeping, setSweeping] = useState<{ rows: Row[]; done: number | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,6 +121,25 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
     onChanged();
   };
 
+  /** Entries that are on and point to a file that no longer exists: leftovers of removed programs. */
+  const leftovers = all.filter((row) => row.entry && row.flags.includes("missing-file"));
+
+  const sweep = async (targets: Row[]) => {
+    setError(null);
+    const failed: string[] = [];
+    for (const [index, row] of targets.entries()) {
+      setSweeping({ rows: targets, done: index });
+      try {
+        await call("disable_autostart", { source: row.source, name: row.name });
+      } catch (e) {
+        failed.push(`${row.title}: ${e}`);
+      }
+    }
+    setSweeping(null);
+    if (failed.length > 0) setError(failed.join(" · "));
+    onChanged();
+  };
+
   const turnOff = (row: Row) => run(row, "disable_autostart", { source: row.source, name: row.name });
   const turnOn = (row: Row) => run(row, "enable_autostart", { id: row.disabled?.id });
   const toggle = (next: Filter) => setFilter(filter === next ? "all" : next);
@@ -166,6 +187,20 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
             { id: "service", label: tr(`Службы · ${count("service")}`, `Services · ${count("service")}`) },
           ]}
         />
+        <span className="flex-1" />
+        {leftovers.length > 0 && (
+          <button
+            onClick={() => setSweeping({ rows: leftovers, done: null })}
+            disabled={sweeping?.done != null}
+            title={tr("Записи, чей файл уже удалён, — остатки удалённых программ", "Entries whose file is already gone — leftovers of removed programs")}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-3 py-2 text-sm text-amber-200 transition-colors hover:bg-amber-400/15 disabled:opacity-60"
+          >
+            {sweeping?.done != null ? <LoaderCircle size={15} className="animate-spin" /> : <Eraser size={15} />}
+            {sweeping?.done != null
+              ? tr(`Отключаю ${sweeping.done + 1} из ${sweeping.rows.length}…`, `Turning off ${sweeping.done + 1} of ${sweeping.rows.length}…`)
+              : tr(`Отключить записи без файла · ${leftovers.length}`, `Turn off entries without a file · ${leftovers.length}`)}
+          </button>
+        )}
       </div>
       {error && <div className="mb-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-2.5 text-sm text-rose-200">{error}</div>}
 
@@ -263,6 +298,29 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
         )}
       </Card>
 
+      {sweeping && sweeping.done == null && (
+        <ConfirmDialog
+          title={tr(`Отключить записи без файла: ${sweeping.rows.length}?`, `Turn off entries without a file: ${sweeping.rows.length}?`)}
+          body={
+            tr(
+              "Файлы, которые должны запускать эти записи, уже удалены — это остатки удалённых программ. Записи будут выключены, и каждую можно включить обратно: ",
+              "The files these entries are meant to start are already gone — they are leftovers of removed programs. The entries will be turned off, and each can be turned back on: ",
+            ) +
+            sweeping.rows.map((row) => `«${row.title}»`).join(", ") +
+            "." +
+            (sweeping.rows.some((row) => row.scope === "machine")
+              ? tr(
+                  " Для записей всех пользователей, заданий и служб Windows попросит подтверждение администратора — отдельно для каждой.",
+                  " For entries for all users, tasks and services Windows will ask for an administrator's confirmation — once for each.",
+                )
+              : "")
+          }
+          confirmLabel={tr("Отключить все", "Turn them all off")}
+          danger
+          onConfirm={() => sweep(sweeping.rows)}
+          onCancel={() => setSweeping(null)}
+        />
+      )}
       {trusting && (
         <ConfirmDialog
           title={tr(`Доверять программе «${trusting.title}»?`, `Trust the program “${trusting.title}”?`)}

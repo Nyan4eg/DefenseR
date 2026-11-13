@@ -218,6 +218,30 @@ export interface AppSettings {
   autoUpdate: boolean;
   /** Development build: start with Windows is unavailable. */
   devBuild: boolean;
+  /** The first-run introduction has been read. */
+  welcomeShown?: boolean;
+}
+
+/** What DefenseR did over the last seven days. */
+export interface WeekActivity {
+  since: number;
+  /** Hours that have anything in them, oldest first; `hour` is Unix time divided by 3600. */
+  hours: { hour: number; watchedSecs: number; files: number; programs: number; online: number }[];
+  incidents: number;
+  incidentsActive: number;
+  incidentsHigh: number;
+  responses: number;
+  trusted: number;
+}
+
+/** The settings that decide where traffic goes. */
+export interface NetConfig {
+  hosts: { address: string; name: string; blocks: boolean }[];
+  hostsReadable: boolean;
+  hostsPath: string;
+  proxyEnabled: boolean;
+  proxyServer: string | null;
+  proxyScript: string | null;
 }
 
 export interface UpdateStatus {
