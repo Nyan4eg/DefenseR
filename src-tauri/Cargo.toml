@@ -1,6 +1,6 @@
 [package]
 name = "defenser"
-version = "0.12.1"
+version = "0.12.2"
 description = "AI-powered PC protection dashboard"
 edition = "2024"
 
@@ -35,6 +35,8 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 sys-locale = "0.3.2"
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# The version Tauri itself uses: only to tell the embedded browser when the window is out of sight.
+webview2-com = "0.39"
 
 
 # Feature extraction loops over every byte of a file; unoptimized it is too slow to use.

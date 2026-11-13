@@ -63,8 +63,11 @@ body {
   }
 }
 
+/* The animations that run for as long as a page is open move in steps, about fifteen a
+   second: every frame makes the whole window be drawn again, and at the screen's full rate
+   that took a fifth of a processor core for a blinking dot. */
 .sweep {
-  animation: sweep 3.2s linear infinite;
+  animation: sweep 3.2s steps(48) infinite;
 }
 
 .sweep-fast {
@@ -84,7 +87,7 @@ body {
 }
 
 .ping-soft {
-  animation: ping-soft 2.4s ease-out infinite;
+  animation: ping-soft 2.4s steps(36) infinite;
 }
 
 /* A highlight that slides across a surface, for the drop area and progress. */
@@ -100,7 +103,7 @@ body {
 .shimmer {
   background-image: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.1) 50%, transparent 70%);
   background-size: 200% 100%;
-  animation: shimmer 2.2s linear infinite;
+  animation: shimmer 2.2s steps(33) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

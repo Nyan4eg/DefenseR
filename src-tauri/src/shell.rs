@@ -84,7 +84,19 @@ pub fn show_main_window(app: &AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+        sync_rendering(&window);
     }
+}
+
+/// Tells the embedded browser whether the window can be seen. Left alone, it goes on drawing
+/// the page's animations and running its timers while the window is minimized or in the tray,
+/// which cost more processor time than the monitoring itself.
+pub fn sync_rendering(window: &tauri::WebviewWindow) {
+    let seen = window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false);
+    let _ = window.with_webview(move |webview| {
+        // SAFETY: called on the main thread with the live controller Tauri hands over.
+        let _ = unsafe { webview.controller().SetIsVisible(seen) };
+    });
 }
 
 pub fn notify(app: &AppHandle, title: &str, body: &str) {
@@ -97,6 +109,7 @@ pub fn notify(app: &AppHandle, title: &str, body: &str) {
 pub fn hide_to_tray(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
+        sync_rendering(&window);
     }
     let state = app.state::<AppState>();
     let mut store = lock(&state.settings);

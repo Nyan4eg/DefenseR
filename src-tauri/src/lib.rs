@@ -779,6 +779,7 @@ pub fn run() {
             if after_update || std::env::args().any(|arg| arg == shell::HIDDEN_ARG) {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
+                    shell::sync_rendering(&window);
                 }
             }
 
@@ -789,11 +790,18 @@ pub fn run() {
             Ok(())
         })
         // Closing the window keeps the monitoring running; quitting is done from the tray.
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 shell::hide_to_tray(window.app_handle());
             }
+            // Minimizing and restoring arrive as these two.
+            tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_) => {
+                if let Some(window) = window.app_handle().get_webview_window(window.label()) {
+                    shell::sync_rendering(&window);
+                }
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             get_overview,

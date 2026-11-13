@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "defenser"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "keyring",
  "netstat2",
@@ -941,6 +941,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "webview2-com",
  "winreg",
  "zip",
 ]
