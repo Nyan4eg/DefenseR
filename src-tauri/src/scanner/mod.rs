@@ -173,6 +173,38 @@ impl Scanner {
         }
     }
 
+    /// A scan whose result always carries the signature, for a file that is about to be
+    /// reported.
+    pub fn scan_verified(&self, path: &Path) -> ScanResult {
+        let mut results = [self.scan(path)];
+        self.verify_signatures(&mut results);
+        let [result] = results;
+        result
+    }
+
+    /// Scans files one after another on the calling thread, for work that should not get in
+    /// the user's way. `each` gets the number of files finished and stops the scan by
+    /// returning false. Only the programs the model calls malicious are returned, with their
+    /// signatures; the rest are not remembered either, so a run over a whole disk does not
+    /// stay in memory.
+    pub fn scan_quietly(&self, files: &[PathBuf], mut each: impl FnMut(usize) -> bool) -> Vec<ScanResult> {
+        let mut alarming = Vec::new();
+        for (index, path) in files.iter().enumerate() {
+            let known = lock(&self.cache).contains_key(path);
+            let result = self.scan(path);
+            if result.verdict == Verdict::Malicious {
+                alarming.push(result);
+            } else if !known {
+                lock(&self.cache).remove(path);
+            }
+            if !each(index + 1) {
+                break;
+            }
+        }
+        self.verify_signatures(&mut alarming);
+        alarming
+    }
+
     /// Scans files on a few threads. `progress` gets the number of files finished so far.
     pub fn scan_all(&self, files: &[PathBuf], progress: impl Fn(usize) + Sync) -> Vec<ScanResult> {
         let next = AtomicUsize::new(0);

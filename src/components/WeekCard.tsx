@@ -1,4 +1,5 @@
-import { Activity as Pulse, FileSearch, Globe, Hand, ShieldAlert, Timer, type LucideIcon } from "lucide-react";
+import { Activity as Pulse, CalendarClock, FileSearch, Globe, Hand, ShieldAlert, Timer, type LucideIcon } from "lucide-react";
+import { describeRun } from "./ScheduleCard";
 import { Card } from "./ui";
 import type { WeekActivity } from "../lib/api";
 import { locale, tr } from "../lib/i18n";
@@ -109,6 +110,13 @@ export function WeekCard({ activity, watching }: Props) {
           <Figure icon={Hand} value={activity.responses + activity.trusted} label={tr("ваших действий и решений", "actions and decisions of yours")} />
         </div>
       </div>
+
+      {activity.scan && (
+        <div className="mt-3 flex items-center gap-2 border-t border-white/6 pt-3 text-xs text-white/55">
+          <CalendarClock size={14} className={`shrink-0 ${activity.scan.flagged > 0 ? "text-amber-300" : "text-emerald-300"}`} />
+          <span className="truncate">{tr(`Проверка по расписанию: ${describeRun(activity.scan)}`, `Scheduled scan: ${describeRun(activity.scan)}`)}</span>
+        </div>
+      )}
     </Card>
   );
 }

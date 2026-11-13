@@ -232,6 +232,36 @@ export interface WeekActivity {
   incidentsHigh: number;
   responses: number;
   trusted: number;
+  /** The last scheduled scan, when it finished within these seven days. */
+  scan?: ScheduledRun | null;
+}
+
+/** How one run of the scheduled scan went. */
+export interface ScheduledRun {
+  startedAt: number;
+  finishedAt: number;
+  /** Programs checked. */
+  files: number;
+  /** Of them, the ones that look like malware and have no valid signature. */
+  flagged: number;
+  stopped: boolean;
+  /** There were more programs than one run looks at. */
+  truncated: boolean;
+  byHand: boolean;
+}
+
+/** The weekly scan of chosen folders: the plan, the last run and the run under way. */
+export interface ScheduleState {
+  enabled: boolean;
+  folders: string[];
+  /** 0 is Monday, 6 is Sunday. */
+  day: number;
+  hour: number;
+  last: ScheduledRun | null;
+  /** `total` is zero while the folders are still being searched; `done` then counts the programs found. */
+  progress: { done: number; total: number } | null;
+  /** The next moment the plan names, Unix seconds. */
+  nextAt: number;
 }
 
 /** How the background monitoring is doing, and the program's own journal. */

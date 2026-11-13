@@ -186,7 +186,7 @@ export default function App() {
             {page === "incidents" && (
               <IncidentsPage incidents={incidents} profile={profile} hasKey={hasKey} onChanged={refresh} onOpenSettings={() => setPage("settings")} />
             )}
-            {page === "scan" && <ScanPage scan={scan} model={model} onScan={startScan} onChanged={refresh} />}
+            {page === "scan" && <ScanPage scan={scan} model={model} onScan={startScan} onChanged={refresh} onOpenIncidents={() => setPage("incidents")} />}
             {page === "responses" && <ResponsesPage responses={responses} onChanged={refresh} />}
             {page === "settings" && <SettingsPage hasKey={hasKey} onChanged={refresh} />}
             {page === "processes" && <ProcessesPage processes={processes} onChanged={refresh} />}

@@ -23,7 +23,7 @@ pub fn path() -> Option<&'static Path> {
 }
 
 /// `2026-11-13 17:42:01` for a Unix time, in UTC.
-fn stamp(secs: u64) -> String {
+pub fn stamp(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
     let rest = secs % 86_400;
     // Days since 1970 to a calendar date (Howard Hinnant's algorithm).

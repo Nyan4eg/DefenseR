@@ -1,6 +1,6 @@
 // Sample data for working on the UI in a plain browser. Never used inside the Tauri app.
 import { lang, tr } from "./i18n";
-import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, ProcessInfo, ProtectionStatus, ResponsesState, ScanResult, TrustState } from "./api";
+import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, ProcessInfo, ProtectionStatus, ResponsesState, ScanResult, ScheduledRun, TrustState } from "./api";
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -227,6 +227,16 @@ const scanResults: ScanResult[] = [
   scanResult("pagefile.sys", "C:\\", null, { verdict: "error", error: "Не удалось прочитать файл: отказано в доступе." }),
 ];
 
+/** The demo plan of the scheduled scan; it can be changed while the page is open. */
+const schedule: { enabled: boolean; folders: string[]; day: number; hour: number; last: ScheduledRun | null; progress: null } = {
+  enabled: true,
+  folders: ["C:\Users\demo\Documents", "D:\Tools"],
+  day: 6,
+  hour: 3,
+  last: { startedAt: now - 3 * 86400 - 400, finishedAt: now - 3 * 86400, files: 3412, flagged: 0, stopped: false, truncated: false, byHand: false },
+  progress: null,
+};
+
 export function mock(command: string, args?: Record<string, unknown>): unknown {
   switch (command) {
     case "get_profile_status":
@@ -382,6 +392,18 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       };
     case "show_journal":
       return null;
+    case "save_report":
+      return null;
+    case "get_schedule":
+      return { ...schedule, folders: [...schedule.folders], nextAt: now + 3 * 86400 };
+    case "set_schedule":
+      Object.assign(schedule, args?.plan);
+      return null;
+    case "run_schedule":
+      schedule.last = { startedAt: now - 240, finishedAt: now, files: 3412, flagged: 0, stopped: false, truncated: false, byHand: true };
+      return null;
+    case "stop_schedule":
+      return null;
     case "get_netconfig":
       return {
         hosts: [
@@ -404,7 +426,7 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
         })
         .map((h) => ({ hour: h, watchedSecs: 3600, files: h % 9 === 0 ? 2 : h % 5 === 0 ? 1 : 0, programs: h % 13 === 0 ? 1 : 0, online: h % 29 === 0 ? 1 : 0 }))
         .reverse();
-      return { since: now - 7 * 86400, hours, incidents: 5, incidentsActive: incidents.filter((i) => i.status === "active").length, incidentsHigh: 1, responses: 4, trusted: 2 };
+      return { since: now - 7 * 86400, hours, incidents: 5, incidentsActive: incidents.filter((i) => i.status === "active").length, incidentsHigh: 1, responses: 4, trusted: 2, scan: schedule.last };
     }
     case "get_extensions":
       return [

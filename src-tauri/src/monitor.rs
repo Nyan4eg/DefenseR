@@ -22,7 +22,7 @@ const PROFILE_SAVE_EVERY: u64 = 6;
 const SLOW_PASS: Duration = Duration::from_secs(30);
 
 /// The rules whose files get a second opinion from VirusTotal when the user allowed that.
-const SECOND_OPINION_RULES: [&str; 3] = ["process-ml-malicious", "new-file-ml-malicious", "autostart-ml-malicious"];
+const SECOND_OPINION_RULES: [&str; 4] = ["process-ml-malicious", "new-file-ml-malicious", "autostart-ml-malicious", "scheduled-ml-malicious"];
 /// Time between automatic lookups; keeps well inside the free key's 4 requests a minute.
 const SECOND_OPINION_GAP: Duration = Duration::from_secs(20);
 /// After a failed lookup (no connection, quota used up) nothing is asked for this long.
@@ -267,6 +267,8 @@ pub fn run(app: AppHandle) {
         // so this costs something only when a file is new or has changed.
         let running: HashSet<String> = processes.iter().filter_map(|process| process.exe.as_ref()).map(|exe| exe.to_lowercase()).collect();
         file_findings.extend(scan_startup_files(&state, &autostart, &running));
+        // What the scheduled scan found stays reported for as long as the file is there.
+        file_findings.extend(crate::schedule::findings(&state.schedule, &state.scanner));
         lap("startup-files");
         let browser_extensions = extensions::collect();
         let net_config = netconfig::collect();

@@ -10,9 +10,11 @@ mod journal;
 mod lang;
 mod monitor;
 mod profile;
+mod report;
 mod responses;
 mod rules;
 pub mod scanner;
+mod schedule;
 mod shell;
 mod startup;
 mod trust;
@@ -52,6 +54,7 @@ pub(crate) struct AppState {
     icons: icons::Icons,
     pub activity: Mutex<activity::Store>,
     pub health: Mutex<Health>,
+    pub schedule: Mutex<schedule::Store>,
 }
 
 /// How the background monitoring is doing.
@@ -212,6 +215,130 @@ fn show_journal() -> Result<(), String> {
     std::process::Command::new("explorer.exe").arg(format!("/select,{}", path.display())).spawn().map(|_| ()).map_err(|error| error.to_string())
 }
 
+/// Writes the report for a request for help into the file the user chose, and shows it in
+/// Explorer.
+#[tauri::command(async)]
+fn save_report(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let path = std::path::PathBuf::from(path);
+    if !path.is_absolute() || !path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("txt")) {
+        return Err(tr("Отчёт сохраняется в текстовый файл (.txt).", "The report is saved to a text file (.txt).").to_string());
+    }
+    let text = report_text(&app, &state, monitor::now_secs());
+    // The mark at the start lets every editor see the text as UTF-8.
+    std::fs::write(&path, format!("\u{feff}{text}")).map_err(|error| error.to_string())?;
+    let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{}", path.display())).spawn();
+    Ok(())
+}
+
+fn report_text(app: &AppHandle, state: &AppState, now: u64) -> String {
+    use report::Section;
+    let yes_no = |value: bool| if value { "yes" } else { "no" };
+    let key = |name: &str| ai::load_key(name).map_or("unknown", |key| yes_no(key.is_some()));
+
+    let mut program = Section::new("Program");
+    program.add("Version", app.package_info().version.to_string());
+    program.add("Build", if cfg!(debug_assertions) { "development" } else { "release" });
+    program.add("Windows", System::long_os_version().unwrap_or_default());
+    program.add("Language", lang::code());
+    program.add("Created", format!("{} UTC", journal::stamp(now)));
+
+    let health = lock(&state.health).clone();
+    let mut monitoring = Section::new("Monitoring");
+    monitoring.add("Passes since start", health.passes);
+    monitoring.add("Seconds since the last pass", if health.last_pass_at == 0 { "none yet".to_string() } else { now.saturating_sub(health.last_pass_at).to_string() });
+    monitoring.add("Last pass, ms", health.last_pass_ms);
+    monitoring.add("Slowest pass, ms", health.slowest_pass_ms);
+    monitoring.add("Stages of the last pass, ms", health.stages.iter().map(|stage| format!("{} {}", stage.name, stage.ms)).collect::<Vec<_>>().join(", "));
+    let profile = lock(&state.profile).status();
+    monitoring.add("Behaviour profile", format!("{}, programs {}", if profile.learning { "learning" } else { "ready" }, profile.programs));
+
+    let settings = lock(&state.settings).settings.clone();
+    let mut options = Section::new("Settings");
+    options.add("Notifications", yes_no(settings.notifications));
+    options.add("Watch Downloads and the desktop", yes_no(settings.watch_downloads));
+    options.add("Watch the temporary folder", yes_no(settings.watch_temp));
+    options.add("Watch removable drives", yes_no(settings.watch_removable));
+    options.add("Ask VirusTotal automatically", yes_no(settings.auto_virustotal));
+    options.add("Install updates automatically", yes_no(settings.auto_update));
+    options.add("Key for explanations set", key(ai::KEY_NAME));
+    options.add("VirusTotal key set", key(vt::KEY_NAME));
+    {
+        let schedule = lock(&state.schedule);
+        let plan = schedule.plan();
+        options.add("Scheduled scan", format!("{}, day {}, hour {}, folders {}", yes_no(plan.enabled), plan.day, plan.hour, plan.folders.len()));
+        if let Some(run) = schedule.last() {
+            options.add(
+                "Last scheduled scan",
+                format!("{} UTC, {} s, programs {}, flagged {}, stopped {}, limit reached {}, by hand {}", journal::stamp(run.started_at), run.finished_at.saturating_sub(run.started_at), run.files, run.flagged, yes_no(run.stopped), yes_no(run.truncated), yes_no(run.by_hand)),
+            );
+        }
+    }
+
+    let mut counts = Section::new("Counts");
+    let entries = autostart::collect();
+    for kind in ["registry", "folder", "task", "service"] {
+        counts.add(&format!("Startup entries, {kind}"), entries.iter().filter(|entry| entry.kind == kind).count());
+    }
+    let browser_extensions = extensions::collect();
+    counts.add("Browser extensions", browser_extensions.len());
+    counts.add("Browser extensions not from a store", browser_extensions.iter().filter(|extension| extension.source != "store").count());
+    let net = netconfig::collect();
+    counts.add("Hosts file readable", yes_no(net.hosts_readable));
+    counts.add("Hosts redirects", net.hosts.iter().filter(|entry| !entry.blocks).count());
+    counts.add("Hosts blocks", net.hosts.iter().filter(|entry| entry.blocks).count());
+    counts.add("Proxy on", yes_no(net.proxy_enabled));
+    counts.add("Proxy script set", yes_no(net.proxy_script.is_some()));
+    {
+        let trust = lock(&state.trust);
+        counts.add("Trusted files / publishers / extensions", format!("{} / {} / {}", trust.state.files.len(), trust.state.publishers.len(), trust.state.extensions.len()));
+        let responses = lock(&state.responses);
+        counts.add("In quarantine / blocked in the firewall / startup entries turned off", format!("{} / {} / {}", responses.state.quarantine.len(), responses.state.blocks.len(), responses.state.autostart.len()));
+        counts.add("Response actions that failed", responses.state.log.iter().filter(|entry| entry.error.is_some()).count());
+    }
+
+    // Rule names and numbers only: the texts of incidents name files and programs.
+    let mut by_rule: std::collections::BTreeMap<String, [usize; 3]> = std::collections::BTreeMap::new();
+    for incident in lock(&state.store).list() {
+        let slot = match incident.status {
+            incidents::Status::Active => 0,
+            incidents::Status::Resolved => 1,
+            incidents::Status::Dismissed => 2,
+        };
+        by_rule.entry(incident.rule).or_default()[slot] += 1;
+    }
+    let mut found = Section::new("Incidents by rule (active / resolved / dismissed)");
+    for (rule, [active, resolved, dismissed]) in by_rule {
+        found.add(&rule, format!("{active} / {resolved} / {dismissed}"));
+    }
+    if found.lines.is_empty() {
+        found.lines.push("none".to_string());
+    }
+
+    let intro = "DefenseR report. It holds no file names, program names or addresses from this computer, except what the journal lines below say; the user name, the user folder and the computer name are replaced.";
+    report::build(intro, &[program, monitoring, options, counts, found], &journal::tail(300), &report::private_words())
+}
+
+#[tauri::command(async)]
+fn get_schedule(state: State<'_, AppState>) -> schedule::View {
+    lock(&state.schedule).view(monitor::now_secs())
+}
+
+#[tauri::command(async)]
+fn set_schedule(state: State<'_, AppState>, plan: schedule::Plan) -> Result<(), String> {
+    lock(&state.schedule).set_plan(plan, monitor::now_secs())
+}
+
+/// Starts the scheduled scan now, without waiting for its hour.
+#[tauri::command(async)]
+fn run_schedule(state: State<'_, AppState>) -> Result<(), String> {
+    lock(&state.schedule).request()
+}
+
+#[tauri::command(async)]
+fn stop_schedule(state: State<'_, AppState>) {
+    lock(&state.schedule).stop();
+}
+
 #[tauri::command(async)]
 fn get_netconfig() -> netconfig::NetConfig {
     netconfig::collect()
@@ -232,6 +359,8 @@ struct Activity {
     responses: u64,
     /// Files, publishers and extensions marked as trusted in the period.
     trusted: u64,
+    /// The last scheduled scan, when it finished within the period.
+    scan: Option<schedule::Run>,
 }
 
 #[tauri::command(async)]
@@ -246,6 +375,7 @@ fn get_activity(state: State<'_, AppState>) -> Activity {
         incidents_active: incidents.iter().filter(|incident| incident.status == incidents::Status::Active).count() as u64,
         incidents_high: incidents.iter().filter(|incident| incident.severity == incidents::Severity::High).count() as u64,
         responses: lock(&state.responses).state.log.iter().filter(|entry| entry.at >= since && entry.error.is_none()).count() as u64,
+        scan: lock(&state.schedule).last().filter(|run| run.finished_at >= since).cloned(),
         trusted: (trust.files.iter().filter(|file| file.added_at >= since).count() + trust.publishers.iter().filter(|publisher| publisher.added_at >= since).count() + trust.extensions.iter().filter(|extension| extension.added_at >= since).count()) as u64,
     }
 }
@@ -771,6 +901,7 @@ pub fn run() {
                 icons: icons::Icons::default(),
                 activity: Mutex::new(activity::Store::load(data_dir.join("activity.json"))),
                 health: Mutex::new(Health::default()),
+                schedule: Mutex::new(schedule::Store::load(data_dir.join("schedule.json"))),
             });
 
             shell::setup_tray(app)?;
@@ -787,6 +918,8 @@ pub fn run() {
             std::thread::spawn(move || monitor::run(handle));
             let handle = app.handle().clone();
             std::thread::spawn(move || update::run(handle));
+            let handle = app.handle().clone();
+            std::thread::spawn(move || schedule::run(handle));
             Ok(())
         })
         // Closing the window keeps the monitoring running; quitting is done from the tray.
@@ -810,6 +943,11 @@ pub fn run() {
             get_netconfig,
             get_diagnostics,
             show_journal,
+            save_report,
+            get_schedule,
+            set_schedule,
+            run_schedule,
+            stop_schedule,
             get_activity,
             get_autostart,
             get_extensions,

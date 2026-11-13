@@ -1,6 +1,6 @@
 [package]
 name = "defenser"
-version = "0.12.2"
+version = "0.13.0"
 description = "AI-powered PC protection dashboard"
 edition = "2024"
 
@@ -35,6 +35,8 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 sys-locale = "0.3.2"
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# The local day of the week and hour, for the scheduled scan.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # The version Tauri itself uses: only to tell the embedded browser when the window is out of sight.
 webview2-com = "0.39"
 

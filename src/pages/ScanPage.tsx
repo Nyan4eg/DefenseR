@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { FileCheck } from "../components/FileCheck";
+import { ScheduleCard } from "../components/ScheduleCard";
 import { Avatar, Chip, EmptyState, Meter, Rise, StatTile } from "../components/kit";
 import { ResponseActions } from "../components/ResponseActions";
 import { Card, PageHeader } from "../components/ui";
@@ -265,9 +266,10 @@ interface Props {
   onScan: (request: ScanRequest) => void;
   /** Called after a response action, so lists elsewhere refresh. */
   onChanged: () => void;
+  onOpenIncidents?: () => void;
 }
 
-export function ScanPage({ scan, model, onScan, onChanged }: Props) {
+export function ScanPage({ scan, model, onScan, onChanged, onOpenIncidents }: Props) {
   const [filter, setFilter] = useState<Filter>("attention");
   const [dragging, setDragging] = useState(false);
   const [aboutModel, setAboutModel] = useState(false);
@@ -437,6 +439,7 @@ export function ScanPage({ scan, model, onScan, onChanged }: Props) {
       )}
 
       <WatchCard />
+      <ScheduleCard onOpenIncidents={onOpenIncidents} />
 
       {model && (
         <Card className="mt-5 overflow-hidden text-sm text-white/55">

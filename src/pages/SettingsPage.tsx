@@ -3,6 +3,7 @@ import {
   Bell,
   ChevronDown,
   CircleCheck,
+  FileText,
   FolderOpen,
   Stethoscope,
   Clock,
@@ -317,7 +318,28 @@ function DiagnosticsCard() {
   const diagnostics = usePolling<Diagnostics>("get_diagnostics", 10_000);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
   if (!diagnostics) return null;
+
+  const saveReport = async () => {
+    try {
+      let path: string | null = "C:\\Users\\demo\\Desktop\\DefenseR-report.txt";
+      if (inTauri) {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        path = await save({
+          title: tr("Куда сохранить отчёт", "Where to save the report"),
+          defaultPath: `DefenseR-report-${new Date().toISOString().slice(0, 10)}.txt`,
+          filters: [{ name: tr("Текст", "Text"), extensions: ["txt"] }],
+        });
+      }
+      if (!path) return;
+      await call("save_report", { path });
+      setError(null);
+      setSaved(path);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const errors = diagnostics.lines.filter((line) => line.includes(" ERROR ")).length;
   const age = diagnostics.lastPassAt ? Math.max(0, Math.round(Date.now() / 1000 - diagnostics.lastPassAt)) : null;
@@ -342,13 +364,19 @@ function DiagnosticsCard() {
       title={tr("Диагностика", "Diagnostics")}
       text={state}
       aside={
-        <button
-          onClick={() => call("show_journal").catch((e) => setError(String(e)))}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/8 px-3 py-1.5 text-sm text-white/70 hover:bg-white/12"
-        >
-          <FolderOpen size={14} />
-          {tr("Файл журнала", "Journal file")}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button onClick={saveReport} className="flex items-center gap-1.5 rounded-lg bg-emerald-400/15 px-3 py-1.5 text-sm text-emerald-100 hover:bg-emerald-400/25">
+            <FileText size={14} />
+            {tr("Собрать отчёт", "Make a report")}
+          </button>
+          <button
+            onClick={() => call("show_journal").catch((e) => setError(String(e)))}
+            className="flex items-center gap-1.5 rounded-lg bg-white/8 px-3 py-1.5 text-sm text-white/70 hover:bg-white/12"
+          >
+            <FolderOpen size={14} />
+            {tr("Файл журнала", "Journal file")}
+          </button>
+        </div>
       }
     >
       <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-white/6 pt-4">
@@ -391,6 +419,14 @@ function DiagnosticsCard() {
           </p>
         </div>
       )}
+      <p className="mt-3 text-xs leading-relaxed text-white/40">
+        {saved
+          ? tr(`Отчёт сохранён: ${saved}. Откройте его и посмотрите, прежде чем отправлять.`, `The report is saved: ${saved}. Open it and look through it before you send it.`)
+          : tr(
+              "Отчёт — один текстовый файл для обращения за помощью: версия, состояние проверок, включённые настройки, количества и журнал. В нём нет названий файлов и программ из инцидентов, а имя пользователя, его папка и имя компьютера заменены. Файл никуда не отправляется — вы сохраняете его сами.",
+              "The report is one text file for asking for help: the version, the state of the checks, the settings that are on, counts and the journal. It holds no file or program names from incidents, and the user name, the user folder and the computer name are replaced. The file is sent nowhere — you save it yourself.",
+            )}
+      </p>
       <ErrorLine error={error} />
     </Section>
   );
