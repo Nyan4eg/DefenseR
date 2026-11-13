@@ -12,7 +12,7 @@
 [![Загрузки](https://img.shields.io/github/downloads/Nyan4eg/DefenseR/total?color=22d3ee&label=%D0%B7%D0%B0%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B8)](https://github.com/Nyan4eg/DefenseR/releases)
 [![Лицензия MIT](https://img.shields.io/github/license/Nyan4eg/DefenseR?color=94a3b8&label=%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F)](LICENSE)
 ![Windows 11](https://img.shields.io/badge/Windows-11-0078d4)
-![Tauri и Rust](https://img.shields.io/badge/Tauri%20%2B%20Rust-f59e0b)
+![Tauri и Rust](https://img.shields.io/badge/Tauri-Rust-f59e0b)
 
 **[⬇ Скачать](https://github.com/Nyan4eg/DefenseR/releases/latest)** · [Что умеет](#что-умеет) · [Приватность](#приватность) · [Сборка](#сборка-из-исходников) · [English](README.md)
 

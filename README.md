@@ -12,7 +12,7 @@ It watches, explains what it sees in plain language, and acts only when you say 
 [![Downloads](https://img.shields.io/github/downloads/Nyan4eg/DefenseR/total?color=22d3ee)](https://github.com/Nyan4eg/DefenseR/releases)
 [![License: MIT](https://img.shields.io/github/license/Nyan4eg/DefenseR?color=94a3b8)](LICENSE)
 ![Windows 11](https://img.shields.io/badge/Windows-11-0078d4)
-![Built with Tauri and Rust](https://img.shields.io/badge/built%20with-Tauri%20%2B%20Rust-f59e0b)
+![Built with Tauri and Rust](https://img.shields.io/badge/Tauri-Rust-f59e0b)
 
 **[⬇ Download](https://github.com/Nyan4eg/DefenseR/releases/latest)** · [What it does](#what-it-does) · [Privacy](#privacy) · [Build](#building-from-source) · [Русский](README.ru.md)
 
