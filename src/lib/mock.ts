@@ -285,10 +285,14 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       return null;
     }
     case "get_trust":
-      return { files: [...trust.files], publishers: [...trust.publishers] };
+      return { files: [...trust.files], publishers: [...trust.publishers], extensions: [...(trust.extensions ?? [])] };
+    case "trust_extension":
+      trust.extensions = [{ key: `${args?.browser}|${args?.profile}|${args?.id}`.toLowerCase(), name: String(args?.id), browser: String(args?.browser), addedAt: Math.floor(Date.now() / 1000) }, ...(trust.extensions ?? [])];
+      return null;
     case "untrust":
       trust.files = trust.files.filter((f) => f.sha256 !== args?.id);
       trust.publishers = trust.publishers.filter((p) => p.signer !== args?.id);
+      trust.extensions = (trust.extensions ?? []).filter((e) => e.key !== args?.id);
       return null;
     case "get_settings":
       return { notifications: true, watchDownloads: true, watchTemp: true, watchRemovable: true, autoVirustotal: false, language: lang, autoUpdate: true, devBuild: false };

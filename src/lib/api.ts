@@ -55,6 +55,8 @@ export interface AutostartEntry {
   publisher?: string | null;
   /** The entry starts a script or a library through a program that is part of Windows. */
   interpreter?: boolean;
+  /** The user trusts this file or its publisher. */
+  trusted?: boolean;
 }
 
 /** An extension installed in a browser. */
@@ -74,6 +76,8 @@ export interface BrowserExtension {
   installedAt: number | null;
   /** The browser page where it can be removed. */
   manageUrl: string;
+  /** The user said they know this extension. */
+  trusted?: boolean;
 }
 
 export type AutostartKind = "registry" | "folder" | "task" | "service";
@@ -140,6 +144,8 @@ export interface FileIdentity {
 export interface TrustState {
   files: { sha256: string; name: string; path: string; addedAt: number }[];
   publishers: { signer: string; addedAt: number }[];
+  /** Extensions from outside a store that the user said they know. */
+  extensions?: { key: string; name: string; browser: string; addedAt: number }[];
 }
 
 export interface ResponseTarget {

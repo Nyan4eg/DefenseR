@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BadgeCheck, Ban, CircleCheck, CircleX, FileBadge, History, Lock, type LucideIcon } from "lucide-react";
+import { BadgeCheck, Ban, CircleCheck, CircleX, FileBadge, History, Lock, type LucideIcon, Puzzle } from "lucide-react";
 import { Avatar, Chip, EmptyState, Rise, StatTile } from "../components/kit";
 import { Card, ConfirmDialog, Loading, PageHeader } from "../components/ui";
 import { call, formatBytes, formatTime, usePolling, type ResponseLogEntry, type ResponsesState, type TrustState } from "../lib/api";
@@ -97,7 +97,7 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
     onChanged();
   };
 
-  const trusted = (trust?.files.length ?? 0) + (trust?.publishers.length ?? 0);
+  const trusted = (trust?.files.length ?? 0) + (trust?.publishers.length ?? 0) + (trust?.extensions?.length ?? 0);
   const row = "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-white/[0.035]";
   const button = "shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/8 hover:text-white";
   const dangerButton = `${button} hover:border-rose-400/40 hover:bg-rose-400/10 hover:text-rose-200`;
@@ -270,7 +270,7 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
               )}
             </About>
             {trusted === 0 ? (
-              <EmptyState icon={BadgeCheck} title={tr("Доверенных файлов и издателей нет", "No trusted files or publishers")} text={tr("Кнопки «Доверять файлу» и «Доверять издателю» появляются в инцидентах и в раскрытых строках программ.", "The Trust file and Trust publisher buttons appear in incidents and in expanded program rows.")} />
+              <EmptyState icon={BadgeCheck} title={tr("Доверенных файлов и издателей нет", "No trusted files or publishers")} text={tr("Кнопки «Доверять файлу» и «Доверять издателю» появляются в инцидентах, в раскрытых строках программ и на странице «Автозагрузка».", "The Trust file and Trust publisher buttons appear in incidents, in expanded program rows and on the Startup page.")} />
             ) : (
               <>
                 {trust?.publishers.map((publisher, index) => (
@@ -295,6 +295,36 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
                             id: publisher.signer,
                             title: tr(`Перестать доверять издателю ${publisher.signer}?`, `Stop trusting publisher ${publisher.signer}?`),
                             body: tr("DefenseR снова будет сообщать о подозрительном поведении его программ.", "DefenseR will report suspicious activity by its programs again."),
+                            confirmLabel: tr("Убрать из доверенных", "Remove from trusted"),
+                            danger: false,
+                          })
+                        }
+                      >
+                        {tr("Убрать", "Remove")}
+                      </button>
+                    </div>
+                  </Rise>
+                ))}
+                {trust?.extensions?.map((extension, index) => (
+                  <Rise key={extension.key} index={index}>
+                    <div className={row}>
+                      <Avatar name={extension.name} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium">{extension.name}</span>
+                          <Chip icon={Puzzle}>{tr("Расширение", "Extension")}</Chip>
+                        </div>
+                        <div className="text-xs text-white/35">{extension.browser}</div>
+                      </div>
+                      <div className="shrink-0 text-xs text-white/40">{formatTime(extension.addedAt)}</div>
+                      <button
+                        className={button}
+                        onClick={() =>
+                          setPending({
+                            command: "untrust",
+                            id: extension.key,
+                            title: tr(`Перестать доверять расширению ${extension.name}?`, `Stop trusting extension ${extension.name}?`),
+                            body: tr("DefenseR снова заведёт о нём инцидент, пока оно установлено не из магазина.", "DefenseR will raise an incident about it again while it is installed from outside a store."),
                             confirmLabel: tr("Убрать из доверенных", "Remove from trusted"),
                             danger: false,
                           })

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { BadgeCheck, Check, ChevronDown, Code, Copy, Eye, Globe, PackagePlus, PowerOff, Puzzle, ShieldQuestion, Sparkles, TriangleAlert } from "lucide-react";
+import { BadgeCheck, Check, ChevronDown, Code, Copy, Eye, Globe, PackagePlus, PowerOff, Puzzle, ShieldCheck, ShieldQuestion, Sparkles, TriangleAlert } from "lucide-react";
 import { Avatar, Chip, EmptyState, Rise, StatTile } from "../components/kit";
 import { Card, Loading, PageHeader, SearchInput, Tabs } from "../components/ui";
-import { formatTime, type BrowserExtension } from "../lib/api";
+import { call, formatTime, type BrowserExtension } from "../lib/api";
 import { tr } from "../lib/i18n";
 
 type Filter = "all" | "all-sites" | "outside" | "off";
@@ -56,9 +56,20 @@ function rank(extension: BrowserExtension): number {
   return (extension.source === "store" ? 0 : 4) + (extension.allSites ? 2 : 0) + (extension.enabled ? 1 : 0);
 }
 
-function ExtensionRow({ extension, open, onToggle }: { extension: BrowserExtension; open: boolean; onToggle: () => void }) {
+function ExtensionRow({ extension, open, onToggle, onChanged }: { extension: BrowserExtension; open: boolean; onToggle: () => void; onChanged: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const source = SOURCES[extension.source];
+
+  const trust = async () => {
+    setError(null);
+    try {
+      await call("trust_extension", { browser: extension.browser, profile: extension.profile, id: extension.id });
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const copy = async () => {
     try {
@@ -87,6 +98,11 @@ function ExtensionRow({ extension, open, onToggle }: { extension: BrowserExtensi
             <Chip icon={source.icon} tone={source.tone}>
               {source.label}
             </Chip>
+            {extension.trusted && (
+              <Chip icon={ShieldCheck} tone="accent" title={tr("Вы сказали, что знаете это расширение; инциденты о нём не заводятся", "You said you know this extension; no incidents are raised about it")}>
+                {tr("Вы доверяете", "Trusted by you")}
+              </Chip>
+            )}
             {extension.allSites && (
               <Chip icon={Eye} tone="warn" title={tr("Может читать и менять страницы любого сайта", "Can read and change the pages of any site")}>
                 {tr("Видит все сайты", "Sees every site")}
@@ -146,6 +162,17 @@ function ExtensionRow({ extension, open, onToggle }: { extension: BrowserExtensi
             </div>
           </div>
 
+          {extension.source !== "store" && !extension.trusted && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={trust} className="flex items-center gap-1.5 rounded-lg bg-emerald-400/15 px-3 py-1.5 text-emerald-200 hover:bg-emerald-400/25">
+                <ShieldCheck size={13} />
+                {tr("Я знаю это расширение", "I know this extension")}
+              </button>
+              <span className="text-white/35">{tr("DefenseR не будет заводить о нём инциденты. Отменить можно на странице «Реакции».", "DefenseR will raise no incidents about it. You can undo this on the Responses page.")}</span>
+              {error && <span className="text-rose-300">{error}</span>}
+            </div>
+          )}
+
           <div className="select-text font-mono text-white/30">{extension.id}</div>
         </div>
       )}
@@ -153,7 +180,7 @@ function ExtensionRow({ extension, open, onToggle }: { extension: BrowserExtensi
   );
 }
 
-export function ExtensionsPage({ extensions }: { extensions: BrowserExtension[] | null }) {
+export function ExtensionsPage({ extensions, onChanged }: { extensions: BrowserExtension[] | null; onChanged: () => void }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [browser, setBrowser] = useState("all");
   const [query, setQuery] = useState("");
@@ -165,6 +192,7 @@ export function ExtensionsPage({ extensions }: { extensions: BrowserExtension[] 
 
   const allSites = inBrowser.filter((extension) => extension.enabled && extension.allSites).length;
   const outside = inBrowser.filter((extension) => extension.source !== "store").length;
+  const unknown = inBrowser.filter((extension) => extension.source !== "store" && !extension.trusted).length;
   const off = inBrowser.filter((extension) => !extension.enabled).length;
 
   const rows = inBrowser
@@ -201,8 +229,8 @@ export function ExtensionsPage({ extensions }: { extensions: BrowserExtension[] 
           icon={TriangleAlert}
           label={tr("Не из магазина", "Not from the store")}
           value={outside}
-          tone={outside > 0 ? "danger" : "accent"}
-          hint={outside > 0 ? tr("их никто не проверял", "no one has reviewed them") : tr("все из магазинов", "all from stores")}
+          tone={unknown > 0 ? "danger" : "accent"}
+          hint={unknown > 0 ? tr("их никто не проверял", "no one has reviewed them") : outside > 0 ? tr("вы им доверяете", "you trust them") : tr("все из магазинов", "all from stores")}
           onClick={() => toggle("outside")}
           active={filter === "outside"}
         />
@@ -244,7 +272,7 @@ export function ExtensionsPage({ extensions }: { extensions: BrowserExtension[] 
             const key = `${extension.browser}|${extension.profile}|${extension.id}`;
             return (
               <Rise key={key} index={index}>
-                <ExtensionRow extension={extension} open={open === key} onToggle={() => setOpen(open === key ? null : key)} />
+                <ExtensionRow extension={extension} open={open === key} onToggle={() => setOpen(open === key ? null : key)} onChanged={onChanged} />
               </Rise>
             );
           })

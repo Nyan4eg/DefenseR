@@ -185,6 +185,48 @@ fn script_report(name: &str, bytes: &[u8], extension: &str) -> Option<Report> {
     })
 }
 
+/// The file a shortcut opens, read from the shortcut's own record of it. `None` for shortcuts
+/// that do not name a local file: ones to Store apps, to network places, or damaged ones.
+pub fn shortcut_target(bytes: &[u8]) -> Option<String> {
+    let u16_at = |at: usize| Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?) as usize);
+    let u32_at = |at: usize| Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?) as usize);
+    // The header is always 0x4C bytes long and says which parts follow.
+    if u32_at(0)? != 0x4C {
+        return None;
+    }
+    let flags = u32_at(0x14)?;
+    let mut at = 0x4C;
+    if flags & 1 != 0 {
+        at += 2 + u16_at(at)?;
+    }
+    if flags & 2 == 0 {
+        return None;
+    }
+    let info = bytes.get(at..at + u32_at(at)?)?;
+    let field = |offset: usize| Some(u32::from_le_bytes(info.get(offset..offset + 4)?.try_into().ok()?) as usize);
+    let header = field(4)?;
+    // Bit 0: the target is on a local drive and its path is stored here.
+    if field(8)? & 1 == 0 {
+        return None;
+    }
+    let narrow = |offset: usize| {
+        let text = info.get(offset..)?;
+        Some(String::from_utf8_lossy(&text[..text.iter().position(|byte| *byte == 0)?]).into_owned())
+    };
+    let wide = |offset: usize| {
+        let units: Vec<u16> = info.get(offset..)?.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]])).take_while(|unit| *unit != 0).collect();
+        Some(String::from_utf16_lossy(&units))
+    };
+    // Newer shortcuts also keep the path as UTF-16, which is the one that survives non-Latin names.
+    let (base, suffix) = if header >= 0x24 && field(28)? != 0 {
+        (wide(field(28)?)?, field(32).filter(|offset| *offset != 0).and_then(wide).unwrap_or_default())
+    } else {
+        (narrow(field(16)?)?, field(24).filter(|offset| *offset != 0).and_then(narrow).unwrap_or_default())
+    };
+    let path = format!("{base}{suffix}");
+    (!path.is_empty()).then_some(path)
+}
+
 /// Everything readable in a shortcut, lowercased: its strings are stored both as UTF-16 and as bytes.
 fn shortcut_text(bytes: &[u8]) -> String {
     let wide: Vec<u16> = bytes.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect();
@@ -361,6 +403,28 @@ pub fn inspect(path: &Path, place: Place, score: &dyn Fn(&[u8]) -> Option<Verdic
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn shortcut_target_is_read() {
+        // A header, an item list of 4 bytes, and a link info block with a local base path.
+        let path = b"C:\\Program Files\\App\\app.exe\0";
+        let mut bytes = vec![0u8; 0x4C];
+        bytes[..4].copy_from_slice(&0x4Cu32.to_le_bytes());
+        bytes[0x14..0x18].copy_from_slice(&3u32.to_le_bytes());
+        bytes.extend([2, 0, 0, 0]);
+        let mut info = Vec::new();
+        for value in [0x1C + path.len() as u32 + 1, 0x1C, 1, 0, 0x1C, 0, 0x1C + path.len() as u32] {
+            info.extend(value.to_le_bytes());
+        }
+        info.extend(path);
+        info.push(0);
+        bytes.extend(info);
+        assert_eq!(shortcut_target(&bytes).as_deref(), Some("C:\\Program Files\\App\\app.exe"));
+
+        bytes[0x14] = 1;
+        assert_eq!(shortcut_target(&bytes), None, "a shortcut without a local path");
+        assert_eq!(shortcut_target(b"not a shortcut"), None);
+    }
 
     #[test]
     fn deceptive_names_are_recognised() {

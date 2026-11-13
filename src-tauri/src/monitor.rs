@@ -1,12 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager};
 
+use crate::collectors::autostart::AutostartEntry;
 use crate::collectors::processes::ProcessInfo;
 use crate::collectors::{autostart, extensions, network, persistence, processes};
-use crate::incidents::{Evidence, Finding, Severity, Target};
+use crate::incidents::{AutostartRef, Evidence, Finding, Severity, Target};
 use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
 use crate::scanner::Verdict;
@@ -19,7 +20,7 @@ const INTERVAL: Duration = Duration::from_secs(10);
 const PROFILE_SAVE_EVERY: u64 = 6;
 
 /// The rules whose files get a second opinion from VirusTotal when the user allowed that.
-const SECOND_OPINION_RULES: [&str; 2] = ["process-ml-malicious", "new-file-ml-malicious"];
+const SECOND_OPINION_RULES: [&str; 3] = ["process-ml-malicious", "new-file-ml-malicious", "autostart-ml-malicious"];
 /// Time between automatic lookups; keeps well inside the free key's 4 requests a minute.
 const SECOND_OPINION_GAP: Duration = Duration::from_secs(20);
 /// After a failed lookup (no connection, quota used up) nothing is asked for this long.
@@ -108,6 +109,79 @@ fn scan_running_files(state: &AppState, processes: &[ProcessInfo]) -> Vec<Findin
     findings
 }
 
+/// Runs the file model over the programs that start on their own and are not running now:
+/// a service or a task with a bad file is worth knowing about before it first runs. Programs
+/// that are running are left to `scan_running_files`, so nothing is reported twice.
+fn scan_startup_files(state: &AppState, autostart: &[AutostartEntry], running: &HashSet<String>) -> Vec<Finding> {
+    let mut by_file: HashMap<PathBuf, &AutostartEntry> = HashMap::new();
+    for entry in autostart {
+        if let Some((exe, false)) = autostart::program_of(entry) {
+            if Path::new(&exe).is_file() {
+                by_file.entry(PathBuf::from(exe)).or_insert(entry);
+            }
+        }
+    }
+    let files: Vec<PathBuf> = by_file.keys().cloned().collect();
+
+    let mut findings = Vec::new();
+    for result in state.scanner.scan_all(&files, |_| {}) {
+        let Some(entry) = by_file.get(Path::new(&result.path)) else { continue };
+        if running.contains(&result.path.to_lowercase()) {
+            continue;
+        }
+        let signature = result.signature.as_ref().map(|signature| signature.status);
+        let broken = signature == Some(SignatureStatus::Invalid);
+        // As for running programs: a valid signature outweighs the model's opinion.
+        if !broken && (result.verdict != Verdict::Malicious || signature == Some(SignatureStatus::Valid)) {
+            continue;
+        }
+        let shown = entry.label.as_deref().unwrap_or(&entry.name);
+        let place = match entry.kind {
+            "task" => trs(format!("задание планировщика «{shown}»"), format!("scheduled task “{shown}”")),
+            "service" => trs(format!("служба «{shown}»"), format!("service “{shown}”")),
+            _ => trs(format!("запись автозагрузки «{shown}»"), format!("startup entry “{shown}”")),
+        };
+        let mut evidence = vec![(tr("Запускает", "Started by"), place), (tr("Путь", "Path"), result.path.clone())];
+        if !broken {
+            evidence.push((tr("Оценка модели", "Model score"), format!("{:.1}%", result.score.unwrap_or(0.0) * 100.0)));
+        }
+        evidence.push((tr("Цифровая подпись", "Digital signature"), downloads::signature_text(signature).to_string()));
+        evidence.push(("SHA-256", result.sha256.clone().unwrap_or_default()));
+        let (rule, severity, title, summary) = if broken {
+            (
+                "autostart-signature-broken",
+                Severity::High,
+                trs(format!("Файл {} из автозагрузки изменён после подписания", result.name), format!("Startup file {} was changed after it was signed", result.name)),
+                tr(
+                    "Эта программа запускается сама, а её цифровая подпись не сходится с содержимым: файл изменили уже после того, как издатель его подписал. Так бывает при повреждении файла, а также когда в чужую программу встраивают посторонний код.",
+                    "This program starts on its own, and its digital signature does not match the contents: the file was changed after the publisher signed it. This happens when a file is damaged, and also when foreign code is built into someone else's program.",
+                ),
+            )
+        } else {
+            (
+                "autostart-ml-malicious",
+                Severity::Medium,
+                trs(format!("Модель считает {} из автозагрузки похожим на вредоносную программу", result.name), format!("The model thinks startup file {} looks like malware", result.name)),
+                tr(
+                    "Эта программа сейчас не работает, но запустится сама. Локальная модель оценила строение её файла как характерное для вредоносных, и у файла нет действительной цифровой подписи. Модель ошибается, особенно на новых и редких программах, поэтому это повод проверить файл, а не приговор.",
+                    "This program is not running now, but it will start on its own. The local model rated the structure of its file as typical of malware, and the file has no valid digital signature. The model makes mistakes, especially with new and rare programs, so this is a reason to check the file, not a verdict.",
+                ),
+            )
+        };
+        findings.push(Finding {
+            id: format!("{rule}|{}", result.path.to_lowercase()),
+            rule,
+            severity,
+            title,
+            summary: summary.to_string(),
+            evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
+            target: Some(Target { pid: None, path: Some(result.path.clone()), autostart: Some(AutostartRef { source: entry.source.clone(), name: entry.name.clone() }) }),
+            timeline: Vec::new(),
+        });
+    }
+    findings
+}
+
 /// Asks VirusTotal about the files the model calls malicious, at most one new file per pass,
 /// and raises the severity of the findings it agrees with. Returns the answers by finding id.
 fn second_opinion(state: &AppState, findings: &mut [Finding], next_lookup: &mut Instant, now: u64) -> Vec<(String, Reputation)> {
@@ -167,11 +241,11 @@ pub fn run(app: AppHandle) {
         let tasks_known = persistence::tasks().is_some();
         let protection = state.protection();
         // Slow on the first pass, when every running program is new to the scanner.
-        let file_findings = scan_running_files(&state, &processes);
-        // The programs that start on their own are looked at too, so the Startup page can say
-        // who published each; results are cached, so this costs something only for new files.
-        let startup_files: Vec<PathBuf> = autostart.iter().filter_map(autostart::program_of).filter(|(_, interpreter)| !interpreter).map(|(exe, _)| PathBuf::from(exe)).filter(|exe| state.scanner.cached(exe).is_none() && exe.is_file()).collect();
-        state.scanner.scan_all(&startup_files, |_| {});
+        let mut file_findings = scan_running_files(&state, &processes);
+        // The programs that start on their own are looked at too; results are cached per file,
+        // so this costs something only when a file is new or has changed.
+        let running: HashSet<String> = processes.iter().filter_map(|process| process.exe.as_ref()).map(|exe| exe.to_lowercase()).collect();
+        file_findings.extend(scan_startup_files(&state, &autostart, &running));
         let browser_extensions = extensions::collect();
 
         let now = now_secs();
@@ -233,7 +307,12 @@ pub fn run(app: AppHandle) {
 
         let snapshot = Snapshot { processes: &processes, autostart: &autostart, protection: &protection };
         let mut findings = rules::evaluate(&snapshot, store.autostart_baseline());
-        rules::extension_rules(&browser_extensions, store.autostart_baseline(), &mut findings);
+        {
+            // Extensions the user said they know are not reported.
+            let trust = lock(&state.trust);
+            let unknown: Vec<_> = browser_extensions.iter().filter(|extension| !trust.trusts_extension(&extension.key())).cloned().collect();
+            rules::extension_rules(&unknown, store.autostart_baseline(), &mut findings);
+        }
         findings.extend(file_findings);
         findings.extend(download_findings);
         findings.extend(behavior_findings);

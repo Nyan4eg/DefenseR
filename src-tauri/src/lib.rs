@@ -121,11 +121,36 @@ struct AutostartView {
     publisher: Option<String>,
     /// The entry starts a script or a library through a program that is part of Windows.
     interpreter: bool,
+    /// The user trusts this file or its publisher.
+    trusted: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionView {
+    #[serde(flatten)]
+    extension: extensions::Extension,
+    /// The user said they know this extension.
+    trusted: bool,
 }
 
 #[tauri::command(async)]
-fn get_extensions() -> Vec<extensions::Extension> {
-    extensions::collect()
+fn get_extensions(state: State<'_, AppState>) -> Vec<ExtensionView> {
+    let trust = lock(&state.trust);
+    extensions::collect().into_iter().map(|extension| ExtensionView { trusted: trust.trusts_extension(&extension.key()), extension }).collect()
+}
+
+/// Marks an extension that did not come from a store as known, so no incident is raised about it.
+#[tauri::command(async)]
+fn trust_extension(state: State<'_, AppState>, browser: String, profile: String, id: String) -> Result<(), String> {
+    let extension = extensions::collect()
+        .into_iter()
+        .find(|extension| extension.browser == browser && extension.profile == profile && extension.id == id)
+        .ok_or(tr("Расширение не найдено: возможно, его уже удалили.", "Extension not found: it may already have been removed."))?;
+    let mut trust = lock(&state.trust);
+    trust.add_extension(extension.key(), &extension.name, &extension.browser, monitor::now_secs());
+    trust.save();
+    Ok(())
 }
 
 /// Icons of program files, as `data:` URLs by path. Files without an icon of their own are left out.
@@ -150,7 +175,11 @@ fn get_autostart(state: State<'_, AppState>) -> Vec<AutostartView> {
                 Some((exe, false)) => signature_of(&state, exe),
                 _ => (None, None),
             };
-            AutostartView { entry, exe: program.map(|(exe, _)| exe), signed, publisher, interpreter }
+            let trusted = match &program {
+                Some((exe, false)) => state.scanner.cached(std::path::Path::new(exe)).is_some_and(|result| lock(&state.trust).trusts(&result)),
+                _ => false,
+            };
+            AutostartView { entry, exe: program.map(|(exe, _)| exe), signed, publisher, interpreter, trusted }
         })
         .collect()
 }
@@ -308,7 +337,7 @@ fn get_trust(state: State<'_, AppState>) -> trust::State {
     lock(&state.trust).state.clone()
 }
 
-/// Stops trusting a file (by SHA-256) or a publisher (by name).
+/// Stops trusting a file (by SHA-256), a publisher (by name) or an extension (by its key).
 #[tauri::command(async)]
 fn untrust(state: State<'_, AppState>, id: String) {
     let mut trust = lock(&state.trust);
@@ -685,6 +714,7 @@ pub fn run() {
             check_reputation,
             get_file_identity,
             trust_file,
+            trust_extension,
             get_trust,
             untrust,
             get_model_info,

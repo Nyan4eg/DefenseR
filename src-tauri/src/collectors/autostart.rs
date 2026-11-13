@@ -64,7 +64,12 @@ const INTERPRETERS: [&str; 11] = ["powershell.exe", "pwsh.exe", "cmd.exe", "wscr
 /// The program file an entry starts, when the command names one by its full path, and
 /// whether that program only runs something else (a script, a library).
 pub fn program_of(entry: &AutostartEntry) -> Option<(String, bool)> {
-    let command = super::persistence::expand_env(&entry.command);
+    let command = if entry.kind == "folder" && entry.command.to_lowercase().ends_with(".lnk") {
+        // A shortcut in the Startup folder: what matters is the program it opens.
+        crate::content::shortcut_target(&std::fs::read(&entry.command).ok()?)?
+    } else {
+        super::persistence::expand_env(&entry.command)
+    };
     let exe = executable_of(&command)?.trim();
     let path = Path::new(exe);
     if !path.is_absolute() || !exe.to_lowercase().ends_with(".exe") {

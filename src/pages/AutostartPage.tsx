@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BadgeCheck, CalendarClock, Clock, Cog, FileCode, FolderOpen, ShieldQuestion, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
+import { BadgeCheck, CalendarClock, ShieldCheck, Clock, Cog, FileCode, FolderOpen, ShieldQuestion, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
 import { Avatar, Chip, EmptyState, friendlyName, Rise, StatTile, Switch } from "../components/kit";
 import { autostartDialog } from "../components/ResponseActions";
 import { Card, ConfirmDialog, FlagBadges, Loading, PageHeader, SearchInput, Tabs } from "../components/ui";
@@ -54,6 +54,7 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
   const [query, setQuery] = useState("");
   const [asking, setAsking] = useState<Row | null>(null);
   const [forgetting, setForgetting] = useState<Row | null>(null);
+  const [trusting, setTrusting] = useState<Row | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,10 +93,11 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
   const enabled = inPlace.filter((row) => row.entry).length;
   const disabled = inPlace.length - enabled;
   const flagged = inPlace.filter((row) => row.flags.length > 0).length;
-  const unsigned = inPlace.filter((row) => row.entry?.signed === false).length;
+  const isUnsigned = (row: Row) => row.entry?.signed === false && !row.entry.trusted;
+  const unsigned = inPlace.filter(isUnsigned).length;
 
   const rows = inPlace
-    .filter((row) => filter === "all" || (filter === "on" ? row.entry : filter === "off" ? row.disabled : filter === "unsigned" ? row.entry?.signed === false : row.flags.length > 0))
+    .filter((row) => filter === "all" || (filter === "on" ? row.entry : filter === "off" ? row.disabled : filter === "unsigned" ? isUnsigned(row) : row.flags.length > 0))
     .filter((row) => {
       const q = query.trim().toLowerCase();
       return !q || row.name.toLowerCase().includes(q) || row.title.toLowerCase().includes(q) || row.command.toLowerCase().includes(q);
@@ -105,6 +107,7 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
   const run = async (row: Row, command: string, args: Record<string, unknown>) => {
     setAsking(null);
     setForgetting(null);
+    setTrusting(null);
     setError(null);
     setBusy(row.key);
     try {
@@ -136,7 +139,7 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
           label={tr("Без подписи", "Unsigned")}
           value={unsigned}
           tone={unsigned > 0 ? "warn" : "neutral"}
-          hint={tr("издатель неизвестен", "publisher unknown")}
+          hint={unsigned > 0 ? tr("издатель неизвестен", "publisher unknown") : tr("или вы им доверяете", "or you trust them")}
           onClick={() => toggle("unsigned")}
           active={filter === "unsigned"}
         />
@@ -199,7 +202,12 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
                           {row.entry.publisher ?? tr("Подписан", "Signed")}
                         </Chip>
                       )}
-                      {row.entry?.signed === false && (
+                      {row.entry?.trusted && row.entry.signed !== true && (
+                        <Chip icon={ShieldCheck} tone="accent" title={tr("Вы сказали, что знаете этот файл. Если он изменится, доверие пропадёт само", "You said you know this file. If it changes, the trust is gone on its own")}>
+                          {tr("Вы доверяете", "Trusted by you")}
+                        </Chip>
+                      )}
+                      {row.entry && isUnsigned(row) && (
                         <Chip icon={ShieldQuestion} tone="warn" title={tr("У файла нет действительной цифровой подписи: кто его выпустил, неизвестно", "The file has no valid digital signature: who published it is unknown")}>
                           {tr("Без подписи", "Unsigned")}
                         </Chip>
@@ -223,6 +231,16 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
                       )}
                     </div>
                   </div>
+                  {row.entry?.exe && isUnsigned(row) && (
+                    <button
+                      onClick={() => setTrusting(row)}
+                      title={tr("Я знаю эту программу", "I know this program")}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/60 transition-colors hover:bg-white/8 hover:text-white"
+                    >
+                      <ShieldCheck size={13} />
+                      {tr("Доверять", "Trust")}
+                    </button>
+                  )}
                   {row.disabled && (
                     <button
                       onClick={() => setForgetting(row)}
@@ -245,6 +263,18 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
         )}
       </Card>
 
+      {trusting && (
+        <ConfirmDialog
+          title={tr(`Доверять программе «${trusting.title}»?`, `Trust the program “${trusting.title}”?`)}
+          body={tr(
+            `DefenseR перестанет помечать этот файл как неподписанный и заводить о нём инциденты. Доверие привязано к содержимому файла: если файл изменится, оно пропадёт само. Отменить можно на странице «Реакции». Файл: ${trusting.entry?.exe}`,
+            `DefenseR will stop marking this file as unsigned and raising incidents about it. The trust is tied to the file's contents: if the file changes, it is gone on its own. You can undo this on the Responses page. File: ${trusting.entry?.exe}`,
+          )}
+          confirmLabel={tr("Доверять файлу", "Trust the file")}
+          onConfirm={() => run(trusting, "trust_file", { path: trusting.entry?.exe, publisher: false })}
+          onCancel={() => setTrusting(null)}
+        />
+      )}
       {asking && <ConfirmDialog {...autostartDialog(asking.title, asking.scope, asking.source)} danger onConfirm={() => turnOff(asking)} onCancel={() => setAsking(null)} />}
       {forgetting && (
         <ConfirmDialog

@@ -68,7 +68,7 @@ export default function App() {
   const hasKey = aiStatus?.hasKey ?? false;
   const profile = usePolling<ProfileStatus>("get_profile_status", 30_000);
   const responses = usePolling<ResponsesState>("get_responses", 15_000, refreshKey);
-  const extensions = usePolling<BrowserExtension[]>("get_extensions", 60_000);
+  const extensions = usePolling<BrowserExtension[]>("get_extensions", 60_000, refreshKey);
   const activeIncidents = incidents?.filter((i) => i.status === "active").length ?? 0;
 
   // Scan state lives here so a scan keeps running, and its results stay, while other pages are open.
@@ -183,7 +183,7 @@ export default function App() {
             {page === "processes" && <ProcessesPage processes={processes} onChanged={refresh} />}
             {page === "network" && <NetworkPage connections={connections} processes={processes} onChanged={refresh} />}
             {page === "autostart" && <AutostartPage autostart={autostart} responses={responses} onChanged={refresh} />}
-            {page === "extensions" && <ExtensionsPage extensions={extensions} />}
+            {page === "extensions" && <ExtensionsPage extensions={extensions} onChanged={refresh} />}
           </motion.div>
         </AnimatePresence>
       </main>

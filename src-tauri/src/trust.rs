@@ -29,11 +29,25 @@ pub struct TrustedPublisher {
     pub added_at: u64,
 }
 
+/// A browser extension the user knows about, although it did not come from a store.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustedExtension {
+    /// Browser, profile and identifier, as `Extension::key` gives them.
+    pub key: String,
+    pub name: String,
+    pub browser: String,
+    pub added_at: u64,
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
     pub files: Vec<TrustedFile>,
     pub publishers: Vec<TrustedPublisher>,
+    /// Absent in lists saved by earlier versions.
+    #[serde(default)]
+    pub extensions: Vec<TrustedExtension>,
 }
 
 pub struct Store {
@@ -89,8 +103,19 @@ impl Store {
         Ok(())
     }
 
-    /// Removes a trusted file (by SHA-256) or publisher (by name).
+    pub fn trusts_extension(&self, key: &str) -> bool {
+        self.state.extensions.iter().any(|extension| extension.key == key)
+    }
+
+    pub fn add_extension(&mut self, key: String, name: &str, browser: &str, now: u64) {
+        if !self.trusts_extension(&key) {
+            self.state.extensions.insert(0, TrustedExtension { key, name: name.to_string(), browser: browser.to_string(), added_at: now });
+        }
+    }
+
+    /// Removes a trusted file (by SHA-256), publisher (by name) or extension (by key).
     pub fn remove(&mut self, id: &str) {
+        self.state.extensions.retain(|extension| extension.key != id);
         self.state.files.retain(|file| file.sha256 != id);
         self.state.publishers.retain(|publisher| publisher.signer != id);
     }
