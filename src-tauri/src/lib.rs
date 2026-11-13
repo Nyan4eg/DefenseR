@@ -3,6 +3,7 @@ mod chains;
 mod collectors;
 mod content;
 mod downloads;
+mod icons;
 mod incidents;
 mod lang;
 mod monitor;
@@ -20,7 +21,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use collectors::{autostart, network, processes, protection, system};
+use collectors::{autostart, extensions, network, processes, protection, system};
 use serde::Serialize;
 use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -46,6 +47,7 @@ pub(crate) struct AppState {
     pub chains: Mutex<chains::Store>,
     /// VirusTotal answers of this session, by SHA-256.
     pub reputations: Mutex<HashMap<String, vt::Reputation>>,
+    icons: icons::Icons,
 }
 
 impl AppState {
@@ -83,6 +85,13 @@ struct ProcessView {
     publisher: Option<String>,
 }
 
+/// Whether a file has a valid signature and who signed it; nothing until the file has been scanned.
+fn signature_of(state: &AppState, exe: &str) -> (Option<bool>, Option<String>) {
+    let signature = state.scanner.cached(std::path::Path::new(exe)).and_then(|result| result.signature);
+    let valid = signature.as_ref().map(|signature| signature.status == scanner::signature::SignatureStatus::Valid);
+    (valid, signature.filter(|_| valid == Some(true)).and_then(|signature| signature.signer))
+}
+
 #[tauri::command(async)]
 fn get_processes(state: State<'_, AppState>) -> Vec<ProcessView> {
     let list = processes::collect(&mut lock(&state.sys));
@@ -91,19 +100,38 @@ fn get_processes(state: State<'_, AppState>) -> Vec<ProcessView> {
     list.into_iter()
         .map(|info| {
             let (signed, publisher) = match &info.exe {
-                Some(exe) => known
-                    .entry(exe.clone())
-                    .or_insert_with(|| {
-                        let signature = state.scanner.cached(std::path::Path::new(exe)).and_then(|result| result.signature);
-                        let valid = signature.as_ref().map(|signature| signature.status == scanner::signature::SignatureStatus::Valid);
-                        (valid, signature.filter(|_| valid == Some(true)).and_then(|signature| signature.signer))
-                    })
-                    .clone(),
+                Some(exe) => known.entry(exe.clone()).or_insert_with(|| signature_of(&state, exe)).clone(),
                 None => (None, None),
             };
             ProcessView { info, signed, publisher }
         })
         .collect()
+}
+
+/// A startup entry with the program it starts and what is known about that program's signature.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutostartView {
+    #[serde(flatten)]
+    entry: autostart::AutostartEntry,
+    /// The program file the entry starts, when its command names one by full path.
+    exe: Option<String>,
+    /// `None` when the file has not been scanned, or the entry runs a script through an interpreter.
+    signed: Option<bool>,
+    publisher: Option<String>,
+    /// The entry starts a script or a library through a program that is part of Windows.
+    interpreter: bool,
+}
+
+#[tauri::command(async)]
+fn get_extensions() -> Vec<extensions::Extension> {
+    extensions::collect()
+}
+
+/// Icons of program files, as `data:` URLs by path. Files without an icon of their own are left out.
+#[tauri::command(async)]
+fn get_icons(state: State<'_, AppState>, paths: Vec<String>) -> HashMap<String, String> {
+    state.icons.get(&paths)
 }
 
 #[tauri::command(async)]
@@ -112,8 +140,19 @@ fn get_connections() -> Vec<network::Connection> {
 }
 
 #[tauri::command(async)]
-fn get_autostart() -> Vec<autostart::AutostartEntry> {
+fn get_autostart(state: State<'_, AppState>) -> Vec<AutostartView> {
     autostart::collect()
+        .into_iter()
+        .map(|entry| {
+            let program = autostart::program_of(&entry);
+            let interpreter = program.as_ref().is_some_and(|(_, interpreter)| *interpreter);
+            let (signed, publisher) = match &program {
+                Some((exe, false)) => signature_of(&state, exe),
+                _ => (None, None),
+            };
+            AutostartView { entry, exe: program.map(|(exe, _)| exe), signed, publisher, interpreter }
+        })
+        .collect()
 }
 
 #[tauri::command(async)]
@@ -601,6 +640,7 @@ pub fn run() {
                 trust: Mutex::new(trust::Store::load(data_dir.join("trust.json"))),
                 chains: Mutex::new(chains::Store::load(data_dir.join("chains.json"))),
                 reputations: Mutex::new(HashMap::new()),
+                icons: icons::Icons::default(),
             });
 
             shell::setup_tray(app)?;
@@ -630,6 +670,8 @@ pub fn run() {
             get_processes,
             get_connections,
             get_autostart,
+            get_extensions,
+            get_icons,
             get_protection,
             get_incidents,
             dismiss_incident,

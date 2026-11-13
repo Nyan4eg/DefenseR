@@ -12,6 +12,7 @@ DefenseR does not replace an antivirus and has no kernel driver. It is a persona
 - **File scan.** A local model (LightGBM, trained on EMBER 2018) rates programs by their structure without running them, and checks the digital signature. New programs in Downloads, on the desktop, in the temp folder and on removable drives are checked on their own. Scripts and shortcuts are read for dangerous commands, ZIP archives are looked into without unpacking, and names like `invoice.pdf.exe` are flagged. A file can also be looked up on VirusTotal (only its SHA-256 is sent).
 - **Chains of events.** When a recently arrived unsigned file was run, added itself to startup and went online, that is shown as one story with a timeline instead of separate alerts.
 - **Behaviour profile.** DefenseR learns which programs normally go online and reports new ones.
+- **Browser extensions.** What is installed in Chrome, Edge, Opera, Brave, Yandex Browser and Firefox, where each came from and what it may see. A new extension from outside a store becomes an incident.
 - **Responses.** End a process, quarantine a file, block a program's network access, turn a startup entry, a scheduled task or a service off. Everything is reversible and happens only on your command.
 - **Explanations from Claude.** On request, an incident is explained in plain language. You need your own Anthropic API key.
 - **Running in the background.** A notification-area icon, Windows notifications, start with Windows, automatic updates.

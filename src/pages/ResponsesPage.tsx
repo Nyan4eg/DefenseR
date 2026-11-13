@@ -231,7 +231,7 @@ export function ResponsesPage({ responses, onChanged }: { responses: ResponsesSt
               responses.blocks.map((block, index) => (
                 <Rise key={block.id} index={index}>
                   <div className={row}>
-                    <Avatar name={block.name} />
+                    <Avatar name={block.name} path={block.path} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{block.name}</div>
                       <div className="truncate font-mono text-xs text-white/35" title={block.path}>

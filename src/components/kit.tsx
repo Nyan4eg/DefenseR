@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import { useIcon } from "../lib/icons";
 import { tr } from "../lib/i18n";
 
 /** Names people know programs by, for the executables that are hard to recognise. */
@@ -46,9 +47,20 @@ function hashOf(text: string): number {
   return hash;
 }
 
-/** A coloured tile with the program's initial; the colour is the same for the same name everywhere. */
-export function Avatar({ name, size = 36, muted = false }: { name: string; size?: number; muted?: boolean }) {
+/**
+ * The program's own icon when `path` names a file that has one; otherwise a coloured tile
+ * with the program's initial, the same colour for the same name everywhere.
+ */
+export function Avatar({ name, size = 36, muted = false, path }: { name: string; size?: number; muted?: boolean; path?: string | null }) {
+  const icon = useIcon(path);
   const hue = hashOf(name) % 360;
+  if (icon) {
+    return (
+      <div style={{ width: size, height: size }} className={`flex shrink-0 items-center justify-center rounded-xl bg-white/[0.06] ${muted ? "opacity-50 grayscale" : ""}`}>
+        <img src={icon} alt="" draggable={false} style={{ width: size * 0.7, height: size * 0.7 }} />
+      </div>
+    );
+  }
   const letter = (friendlyName(name).match(/[\p{L}\p{N}]/u)?.[0] ?? "?").toUpperCase();
   const style: CSSProperties = {
     width: size,

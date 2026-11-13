@@ -63,7 +63,7 @@ function ProgramRow({ group, open, onToggle, maxMemory, onChanged }: RowProps) {
   return (
     <div className={`rounded-xl transition-colors ${open ? "bg-white/[0.05]" : "hover:bg-white/[0.035]"}`}>
       <button onClick={onToggle} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
-        <Avatar name={group.name} muted={group.exe === null} />
+        <Avatar name={group.name} muted={group.exe === null} path={group.exe} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{title}</span>

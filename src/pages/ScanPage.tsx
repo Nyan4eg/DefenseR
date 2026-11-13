@@ -80,7 +80,7 @@ function ResultRow({ result, onChanged }: { result: ScanResult; onChanged: () =>
   return (
     <div className={`rounded-xl transition-colors ${open ? "bg-white/[0.05]" : "hover:bg-white/[0.035]"}`}>
       <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
-        <Avatar name={result.name} muted={result.score === null} />
+        <Avatar name={result.name} muted={result.score === null} path={result.score === null ? null : result.path} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{result.name}</span>

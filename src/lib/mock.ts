@@ -348,7 +348,18 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
     case "get_connections":
       return connections;
     case "get_autostart":
-      return autostart;
+      return autostart.map((entry, index) => ({ ...entry, signed: entry.flags.length > 0 ? null : index % 4 !== 2, publisher: index % 4 !== 2 ? "Demo Software LLC" : null, interpreter: entry.command.startsWith("powershell") }));
+    case "get_icons":
+      return {};
+    case "get_extensions":
+      return [
+        { browser: "Chrome", profile: "Default", id: "aaaabbbbccccddddeeeeffffgggghhhh", name: "Demo Ad Blocker", version: "5.2.1", enabled: true, source: "store", allSites: true, permissions: ["webRequest", "tabs", "scripting"], installedAt: now - 86400 * 200, manageUrl: "chrome://extensions/?id=aaaabbbbccccddddeeeeffffgggghhhh" },
+        { browser: "Chrome", profile: "Default", id: "bbbbccccddddeeeeffffgggghhhhiiii", name: "Demo Password Keeper", version: "3.0", enabled: true, source: "store", allSites: true, permissions: ["nativeMessaging", "privacy"], installedAt: now - 86400 * 90, manageUrl: "chrome://extensions/?id=bbbbccccddddeeeeffffgggghhhhiiii" },
+        { browser: "Chrome", profile: "Default", id: "ccccddddeeeeffffgggghhhhiiiijjjj", name: "Search Helper Toolbar", version: "1.4", enabled: true, source: "external", allSites: true, permissions: ["cookies", "history", "tabs", "webRequest"], installedAt: now - 86400 * 2, manageUrl: "chrome://extensions/?id=ccccddddeeeeffffgggghhhhiiiijjjj" },
+        { browser: "Edge", profile: "Default", id: "ddddeeeeffffgggghhhhiiiijjjjkkkk", name: "Demo Video Skipper", version: "6.1", enabled: true, source: "store", allSites: false, permissions: ["scripting"], installedAt: now - 86400 * 30, manageUrl: "edge://extensions/?id=ddddeeeeffffgggghhhhiiiijjjjkkkk" },
+        { browser: "Edge", profile: "Default", id: "eeeeffffgggghhhhiiiijjjjkkkkllll", name: "My Test Extension", version: "0.1", enabled: false, source: "unpacked", allSites: false, permissions: [], installedAt: null, manageUrl: "edge://extensions/?id=eeeeffffgggghhhhiiiijjjjkkkkllll" },
+        { browser: "Firefox", profile: "abcd.default-release", id: "demo@example.org", name: "Demo Notes", version: "2.2", enabled: true, source: "store", allSites: false, permissions: ["tabs"], installedAt: now - 86400 * 400, manageUrl: "about:addons" },
+      ];
     case "get_protection":
       return protection;
     default:

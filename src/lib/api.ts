@@ -48,6 +48,32 @@ export interface AutostartEntry {
   label?: string | null;
   /** For tasks and services: when it starts, in words. */
   trigger?: string | null;
+  /** The program file the entry starts, when its command names one by full path. */
+  exe?: string | null;
+  /** Whether that file has a valid signature; null until it has been checked. */
+  signed?: boolean | null;
+  publisher?: string | null;
+  /** The entry starts a script or a library through a program that is part of Windows. */
+  interpreter?: boolean;
+}
+
+/** An extension installed in a browser. */
+export interface BrowserExtension {
+  browser: string;
+  profile: string;
+  id: string;
+  name: string;
+  version: string;
+  enabled: boolean;
+  /** Where it came from: the browser's store, a folder in developer mode, another program or policy, or elsewhere. */
+  source: "store" | "unpacked" | "external" | "other";
+  /** It may read and change the pages of every site. */
+  allSites: boolean;
+  /** The sensitive permissions it holds, by their API names. */
+  permissions: string[];
+  installedAt: number | null;
+  /** The browser page where it can be removed. */
+  manageUrl: string;
 }
 
 export type AutostartKind = "registry" | "folder" | "task" | "service";

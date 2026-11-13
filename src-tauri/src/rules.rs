@@ -5,6 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::collectors::autostart::AutostartEntry;
+use crate::collectors::extensions::Extension;
 use crate::collectors::processes::ProcessInfo;
 use crate::collectors::protection::ProtectionStatus;
 use crate::incidents::{Evidence, Finding, Severity, Target};
@@ -211,6 +212,54 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
     }
 }
 
+/// Extensions that appeared since the baseline and did not come from the browser's store.
+/// Ones from a store are the user's everyday choice and are only shown on their page.
+pub fn extension_rules(extensions: &[Extension], baseline: Option<&HashSet<String>>, findings: &mut Vec<Finding>) {
+    let Some(known) = baseline else {
+        return;
+    };
+    for extension in extensions {
+        if !extension.enabled || extension.source == "store" || known.contains(&extension_key(extension)) {
+            continue;
+        }
+        let origin = match extension.source {
+            "unpacked" => tr("загружено из папки в режиме разработчика", "loaded from a folder in developer mode"),
+            "external" => tr("добавлено другой программой или политикой, а не вами в браузере", "added by another program or by policy, not by you in the browser"),
+            _ => tr("не из магазина расширений браузера", "not from the browser's extension store"),
+        };
+        let reach = if extension.all_sites { tr("все сайты", "every site") } else { tr("отдельные сайты", "some sites") };
+        findings.push(Finding {
+            id: format!("extension-new|{}", extension.key()),
+            rule: "extension-new",
+            severity: if extension.all_sites { Severity::High } else { Severity::Medium },
+            title: trs(
+                format!("В {} появилось расширение «{}» не из магазина", extension.browser, extension.name),
+                format!("An extension “{}” that is not from the store appeared in {}", extension.name, extension.browser),
+            ),
+            summary: tr(
+                "Расширение браузера видит страницы, которые вы открываете, и может менять их. Те, что ставятся в обход магазина, никто не проверял; так распространяются рекламные и шпионские расширения. Если вы не ставили его сами, удалите его на странице расширений браузера.",
+                "A browser extension sees the pages you open and can change them. Ones installed past the store have been checked by no one; this is how adware and spying extensions spread. If you did not install it yourself, remove it on the browser's extensions page.",
+            )
+            .to_string(),
+            evidence: evidence(&[
+                (tr("Браузер", "Browser"), &format!("{} ({})", extension.browser, extension.profile)),
+                (tr("Расширение", "Extension"), &format!("{} {}", extension.name, extension.version)),
+                (tr("Идентификатор", "Identifier"), &extension.id),
+                (tr("Откуда", "Origin"), origin),
+                (tr("Доступ", "Access"), reach),
+                (tr("Где удалить", "Where to remove"), &extension.manage_url),
+            ]),
+            target: None,
+            timeline: Vec::new(),
+        });
+    }
+}
+
+/// Identity of an extension in the baseline.
+pub fn extension_key(extension: &Extension) -> String {
+    format!("extension|{}", extension.key())
+}
+
 fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) {
     if protection.realtime == Some(false) {
         findings.push(Finding {
@@ -262,5 +311,41 @@ fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) 
             target: None,
             timeline: Vec::new(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn extension(id: &str, source: &'static str, all_sites: bool) -> Extension {
+        Extension {
+            browser: "Chrome".to_string(),
+            profile: "Default".to_string(),
+            id: id.to_string(),
+            name: id.to_string(),
+            version: "1".to_string(),
+            enabled: true,
+            source,
+            all_sites,
+            permissions: Vec::new(),
+            installed_at: None,
+            manage_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn only_new_extensions_from_outside_a_store_are_reported() {
+        let installed = [extension("old", "external", true), extension("shop", "store", true), extension("dev", "unpacked", false), extension("toolbar", "external", true)];
+        let known: HashSet<String> = [extension_key(&installed[0])].into();
+
+        let mut findings = Vec::new();
+        extension_rules(&installed, None, &mut findings);
+        assert!(findings.is_empty(), "nothing is new before there is a baseline");
+
+        extension_rules(&installed, Some(&known), &mut findings);
+        let ids: Vec<&str> = findings.iter().map(|finding| finding.id.as_str()).collect();
+        assert_eq!(ids, ["extension-new|chrome|default|dev", "extension-new|chrome|default|toolbar"]);
+        assert!(findings[0].severity == Severity::Medium && findings[1].severity == Severity::High, "seeing every site makes it more serious");
     }
 }

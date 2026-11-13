@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { CalendarClock, Clock, Cog, FolderOpen, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
+import { BadgeCheck, CalendarClock, Clock, Cog, FileCode, FolderOpen, ShieldQuestion, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
 import { Avatar, Chip, EmptyState, friendlyName, Rise, StatTile, Switch } from "../components/kit";
 import { autostartDialog } from "../components/ResponseActions";
 import { Card, ConfirmDialog, FlagBadges, Loading, PageHeader, SearchInput, Tabs } from "../components/ui";
 import { call, formatTime, type AutostartEntry, type DisabledAutostart, type ResponsesState } from "../lib/api";
 import { tr } from "../lib/i18n";
 
-type Filter = "all" | "on" | "off" | "flagged";
+type Filter = "all" | "on" | "off" | "flagged" | "unsigned";
 /** The three places a program can start itself from. */
 type Place = "all" | "startup" | "task" | "service";
 
@@ -92,9 +92,10 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
   const enabled = inPlace.filter((row) => row.entry).length;
   const disabled = inPlace.length - enabled;
   const flagged = inPlace.filter((row) => row.flags.length > 0).length;
+  const unsigned = inPlace.filter((row) => row.entry?.signed === false).length;
 
   const rows = inPlace
-    .filter((row) => filter === "all" || (filter === "on" ? row.entry : filter === "off" ? row.disabled : row.flags.length > 0))
+    .filter((row) => filter === "all" || (filter === "on" ? row.entry : filter === "off" ? row.disabled : filter === "unsigned" ? row.entry?.signed === false : row.flags.length > 0))
     .filter((row) => {
       const q = query.trim().toLowerCase();
       return !q || row.name.toLowerCase().includes(q) || row.title.toLowerCase().includes(q) || row.command.toLowerCase().includes(q);
@@ -130,6 +131,15 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
         <StatTile icon={Rocket} label={tr("Всего записей", "All entries")} value={inPlace.length} onClick={() => setFilter("all")} active={filter === "all"} />
         <StatTile icon={Power} label={tr("Включено", "On")} value={enabled} tone="accent" hint={tr("запускаются сами", "start on their own")} onClick={() => toggle("on")} active={filter === "on"} />
         <StatTile icon={PowerOff} label={tr("Выключено вами", "Turned off by you")} value={disabled} tone="info" hint={tr("можно включить обратно", "can be turned back on")} onClick={() => toggle("off")} active={filter === "off"} />
+        <StatTile
+          icon={ShieldQuestion}
+          label={tr("Без подписи", "Unsigned")}
+          value={unsigned}
+          tone={unsigned > 0 ? "warn" : "neutral"}
+          hint={tr("издатель неизвестен", "publisher unknown")}
+          onClick={() => toggle("unsigned")}
+          active={filter === "unsigned"}
+        />
         <StatTile
           icon={TriangleAlert}
           label={tr("Требуют внимания", "Need attention")}
@@ -173,7 +183,7 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
             return (
               <Rise key={row.key} index={index}>
                 <div className={`flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-white/[0.035] ${on ? "" : "opacity-60 hover:opacity-100"}`}>
-                  <Avatar name={row.name} muted={!on} />
+                  <Avatar name={row.title} muted={!on} path={row.entry?.exe} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium" title={row.name}>{row.title}</span>
@@ -184,6 +194,21 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
                       {row.command}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {row.entry?.signed === true && (
+                        <Chip icon={BadgeCheck} tone="accent" title={tr("Файл подписан этим издателем, и подпись цела", "The file is signed by this publisher and the signature is intact")}>
+                          {row.entry.publisher ?? tr("Подписан", "Signed")}
+                        </Chip>
+                      )}
+                      {row.entry?.signed === false && (
+                        <Chip icon={ShieldQuestion} tone="warn" title={tr("У файла нет действительной цифровой подписи: кто его выпустил, неизвестно", "The file has no valid digital signature: who published it is unknown")}>
+                          {tr("Без подписи", "Unsigned")}
+                        </Chip>
+                      )}
+                      {row.entry?.interpreter && (
+                        <Chip icon={FileCode} title={tr("Запускает не программу, а скрипт или библиотеку через средство Windows", "Starts not a program but a script or a library through a Windows tool")}>
+                          {tr("Запускает скрипт", "Runs a script")}
+                        </Chip>
+                      )}
                       <Chip icon={row.scope === "machine" ? Users : User} title={row.source}>
                         {row.scope === "machine" ? tr("Для всех пользователей", "For all users") : tr("Только для вас", "Only for you")}
                       </Chip>

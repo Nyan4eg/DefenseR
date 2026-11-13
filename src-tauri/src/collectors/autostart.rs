@@ -58,6 +58,22 @@ pub fn executable_of(command: &str) -> Option<&str> {
     command.get(..end)
 }
 
+/// Programs that run something else: their own signature says nothing about what an entry starts.
+const INTERPRETERS: [&str; 11] = ["powershell.exe", "pwsh.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "msiexec.exe", "conhost.exe", "explorer.exe"];
+
+/// The program file an entry starts, when the command names one by its full path, and
+/// whether that program only runs something else (a script, a library).
+pub fn program_of(entry: &AutostartEntry) -> Option<(String, bool)> {
+    let command = super::persistence::expand_env(&entry.command);
+    let exe = executable_of(&command)?.trim();
+    let path = Path::new(exe);
+    if !path.is_absolute() || !exe.to_lowercase().ends_with(".exe") {
+        return None;
+    }
+    let name = path.file_name()?.to_string_lossy().to_lowercase();
+    Some((exe.replace('/', "\\"), INTERPRETERS.contains(&name.as_str())))
+}
+
 pub fn command_flags(command: &str) -> Vec<String> {
     let mut flags = path_flags(command);
     if let Some(exe) = executable_of(command) {

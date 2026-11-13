@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 use crate::collectors::processes::ProcessInfo;
-use crate::collectors::{autostart, network, persistence, processes};
+use crate::collectors::{autostart, extensions, network, persistence, processes};
 use crate::incidents::{Evidence, Finding, Severity, Target};
 use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
@@ -168,6 +168,11 @@ pub fn run(app: AppHandle) {
         let protection = state.protection();
         // Slow on the first pass, when every running program is new to the scanner.
         let file_findings = scan_running_files(&state, &processes);
+        // The programs that start on their own are looked at too, so the Startup page can say
+        // who published each; results are cached, so this costs something only for new files.
+        let startup_files: Vec<PathBuf> = autostart.iter().filter_map(autostart::program_of).filter(|(_, interpreter)| !interpreter).map(|(exe, _)| PathBuf::from(exe)).filter(|exe| state.scanner.cached(exe).is_none() && exe.is_file()).collect();
+        state.scanner.scan_all(&startup_files, |_| {});
+        let browser_extensions = extensions::collect();
 
         let now = now_secs();
         let settings = lock(&state.settings).settings.clone();
@@ -214,13 +219,21 @@ pub fn run(app: AppHandle) {
         }
 
         let mut store = lock(&state.store);
-        let groups: &[&str] = if tasks_known { &["entry", "service", "task"] } else { &["entry", "service"] };
-        if store.extend_baseline(groups, |group| autostart.iter().filter(|entry| rules::baseline_group(entry) == group).map(rules::autostart_key).collect()) {
+        let groups: &[&str] = if tasks_known { &["entry", "service", "extension", "task"] } else { &["entry", "service", "extension"] };
+        let current = |group: &str| -> Vec<String> {
+            if group == "extension" {
+                browser_extensions.iter().map(rules::extension_key).collect()
+            } else {
+                autostart.iter().filter(|entry| rules::baseline_group(entry) == group).map(rules::autostart_key).collect()
+            }
+        };
+        if store.extend_baseline(groups, current) {
             store.save();
         }
 
         let snapshot = Snapshot { processes: &processes, autostart: &autostart, protection: &protection };
         let mut findings = rules::evaluate(&snapshot, store.autostart_baseline());
+        rules::extension_rules(&browser_extensions, store.autostart_baseline(), &mut findings);
         findings.extend(file_findings);
         findings.extend(download_findings);
         findings.extend(behavior_findings);

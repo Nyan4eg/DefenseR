@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, FileSearch, LayoutDashboard, Lock, Network, Rocket, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Activity, FileSearch, LayoutDashboard, Lock, Network, Puzzle, Rocket, Settings, ShieldAlert, ShieldCheck } from "lucide-react";
 import {
   call,
   inTauri,
@@ -8,6 +8,7 @@ import {
   type AiStatus,
   type AppSettings,
   type AutostartEntry,
+  type BrowserExtension,
   type Connection,
   type Incident,
   type ModelInfo,
@@ -27,10 +28,11 @@ import { OverviewPage, type Sample } from "./pages/OverviewPage";
 import { ProcessesPage } from "./pages/ProcessesPage";
 import { NetworkPage } from "./pages/NetworkPage";
 import { AutostartPage } from "./pages/AutostartPage";
+import { ExtensionsPage } from "./pages/ExtensionsPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
-type PageId = "overview" | "incidents" | "scan" | "responses" | "processes" | "network" | "autostart" | "settings";
+type PageId = "overview" | "incidents" | "scan" | "responses" | "processes" | "network" | "autostart" | "extensions" | "settings";
 
 const NAV = [
   { id: "overview", label: tr("Обзор", "Overview"), icon: LayoutDashboard },
@@ -40,6 +42,7 @@ const NAV = [
   { id: "processes", label: tr("Процессы", "Processes"), icon: Activity },
   { id: "network", label: tr("Сеть", "Network"), icon: Network },
   { id: "autostart", label: tr("Автозагрузка", "Startup"), icon: Rocket },
+  { id: "extensions", label: tr("Расширения", "Extensions"), icon: Puzzle },
   { id: "settings", label: tr("Настройки", "Settings"), icon: Settings },
 ] as const;
 
@@ -65,6 +68,7 @@ export default function App() {
   const hasKey = aiStatus?.hasKey ?? false;
   const profile = usePolling<ProfileStatus>("get_profile_status", 30_000);
   const responses = usePolling<ResponsesState>("get_responses", 15_000, refreshKey);
+  const extensions = usePolling<BrowserExtension[]>("get_extensions", 60_000);
   const activeIncidents = incidents?.filter((i) => i.status === "active").length ?? 0;
 
   // Scan state lives here so a scan keeps running, and its results stay, while other pages are open.
@@ -179,6 +183,7 @@ export default function App() {
             {page === "processes" && <ProcessesPage processes={processes} onChanged={refresh} />}
             {page === "network" && <NetworkPage connections={connections} processes={processes} onChanged={refresh} />}
             {page === "autostart" && <AutostartPage autostart={autostart} responses={responses} onChanged={refresh} />}
+            {page === "extensions" && <ExtensionsPage extensions={extensions} />}
           </motion.div>
         </AnimatePresence>
       </main>
