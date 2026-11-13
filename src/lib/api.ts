@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { locale, tr, type Lang } from "./i18n";
 
 export interface Overview {
   hostName: string;
@@ -161,6 +162,8 @@ export interface AppSettings {
   watchRemovable: boolean;
   /** Ask VirusTotal without being asked about files the model calls malicious. */
   autoVirustotal: boolean;
+  /** The language the backend writes its texts in. */
+  language: Lang;
   autoUpdate: boolean;
   /** Development build: start with Windows is unavailable. */
   devBuild: boolean;
@@ -280,26 +283,26 @@ export function usePolling<T>(command: string, intervalMs: number, refreshKey = 
 }
 
 export const FLAG_LABELS: Record<string, string> = {
-  "temp-path": "Запуск из временной папки",
-  "missing-file": "Файл не найден",
+  "temp-path": tr("Запуск из временной папки", "Runs from a temp folder"),
+  "missing-file": tr("Файл не найден", "File not found"),
 };
 
 export function formatBytes(bytes: number): string {
   const gb = bytes / 1024 ** 3;
-  if (gb >= 1) return `${gb.toFixed(1)} ГБ`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} МБ`;
-  return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+  if (gb >= 1) return `${gb.toFixed(1)} ${tr("ГБ", "GB")}`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} ${tr("МБ", "MB")}`;
+  return `${Math.max(1, Math.round(bytes / 1024))} ${tr("КБ", "KB")}`;
 }
 
 export function formatTime(unixSecs: number): string {
-  return new Date(unixSecs * 1000).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return new Date(unixSecs * 1000).toLocaleString(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatUptime(secs: number): string {
   const days = Math.floor(secs / 86400);
   const hours = Math.floor((secs % 86400) / 3600);
   const minutes = Math.floor((secs % 3600) / 60);
-  if (days > 0) return `${days} д ${hours} ч`;
-  if (hours > 0) return `${hours} ч ${minutes} мин`;
-  return `${minutes} мин`;
+  if (days > 0) return `${days} ${tr("д", "d")} ${hours} ${tr("ч", "h")}`;
+  if (hours > 0) return `${hours} ${tr("ч", "h")} ${minutes} ${tr("мин", "min")}`;
+  return `${minutes} ${tr("мин", "min")}`;
 }

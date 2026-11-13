@@ -1,4 +1,5 @@
 // Sample data for working on the UI in a plain browser. Never used inside the Tauri app.
+import { lang } from "./i18n";
 import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, ProcessInfo, ProtectionStatus, ResponsesState, ScanResult, TrustState } from "./api";
 
 const GB = 1024 ** 3;
@@ -254,7 +255,9 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       trust.publishers = trust.publishers.filter((p) => p.signer !== args?.id);
       return null;
     case "get_settings":
-      return { notifications: true, watchDownloads: true, watchTemp: true, watchRemovable: true, autoVirustotal: false, autoUpdate: true, devBuild: false };
+      return { notifications: true, watchDownloads: true, watchTemp: true, watchRemovable: true, autoVirustotal: false, language: lang, autoUpdate: true, devBuild: false };
+    case "set_language":
+      return null;
     case "get_update_status":
     case "check_update":
       return { current: "0.1.1", available: "0.2.0", notes: "Проверка файлов по VirusTotal.", checkedAt: Math.floor(Date.now() / 1000) - 600, checking: false, installing: false, error: null, devBuild: false };

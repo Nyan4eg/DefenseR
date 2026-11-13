@@ -1,0 +1,28 @@
+# Type-checks the interface and runs the Rust tests on every push and pull request.
+# Releases are built and signed on the maintainer's machine (npm run release), not here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Also produces dist/, which the Rust build embeds.
+      - run: npm run build
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # The skipped tests call the Anthropic and VirusTotal APIs to check how a rejected key is reported.
+      - run: cargo test --lib -- --skip runtime_thread
+        working-directory: src-tauri

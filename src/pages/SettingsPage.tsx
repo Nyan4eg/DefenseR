@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { CircleCheck, FileSearch, KeyRound, LoaderCircle, MonitorCog, RefreshCw } from "lucide-react";
+import { CircleCheck, FileSearch, KeyRound, Languages, LoaderCircle, MonitorCog, RefreshCw } from "lucide-react";
+import { applyLang, lang, type Lang } from "../lib/i18n";
 import { Card, PageHeader } from "../components/ui";
 import { call, formatTime, inTauri, usePolling, type AiStatus, type AppSettings, type UpdateStatus } from "../lib/api";
 
@@ -245,6 +246,33 @@ function UpdatesCard() {
   );
 }
 
+/** Switches the interface language; the window reloads to apply it. */
+function LanguageCard() {
+  const choose = async (next: Lang) => {
+    if (next === lang) return;
+    await call("set_language", { language: next }).catch(() => {});
+    applyLang(next);
+  };
+
+  return (
+    <Card className="mb-4 flex max-w-2xl items-center gap-4 p-5">
+      <Languages size={16} className="shrink-0 text-emerald-400" />
+      <div className="min-w-0 flex-1 text-sm font-medium">Язык · Language</div>
+      <div className="flex gap-1 rounded-lg bg-white/5 p-1">
+        {(["ru", "en"] as const).map((code) => (
+          <button
+            key={code}
+            onClick={() => choose(code)}
+            className={`rounded-md px-3 py-1 text-sm ${code === lang ? "bg-white/12 text-white" : "text-white/55 hover:text-white/85"}`}
+          >
+            {code === "ru" ? "Русский" : "English"}
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 interface KeyCardProps {
   title: string;
   description: string;
@@ -328,6 +356,7 @@ export function SettingsPage({ hasKey, onChanged }: { hasKey: boolean; onChanged
     <>
       <PageHeader title="Настройки" subtitle="Ключи, работа в фоне и обновления" />
 
+      <LanguageCard />
       <KeyCard
         title="Ключ Anthropic API"
         description="Ключ нужен, чтобы Claude объяснял инциденты простым языком. Он хранится в диспетчере учётных данных Windows, а не в файлах приложения. Получить ключ можно в консоли Anthropic; запросы оплачиваются с вашего аккаунта."

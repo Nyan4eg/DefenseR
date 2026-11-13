@@ -38,6 +38,9 @@ pub struct Settings {
     /// turns it on, because it sends file hashes without being asked each time.
     #[serde(default)]
     pub auto_virustotal: bool,
+    /// "ru" or "en"; `None` until the user picks one, which means the language of Windows.
+    #[serde(default)]
+    pub language: Option<String>,
     /// Install new versions on their own while the window is hidden.
     #[serde(default = "enabled")]
     pub auto_update: bool,
@@ -48,7 +51,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { notifications: true, watch_downloads: true, watch_temp: true, watch_removable: true, auto_virustotal: false, auto_update: true, tray_hint_shown: false }
+        Self { notifications: true, watch_downloads: true, watch_temp: true, watch_removable: true, auto_virustotal: false, language: None, auto_update: true, tray_hint_shown: false }
     }
 }
 

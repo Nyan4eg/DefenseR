@@ -3,6 +3,7 @@ mod chains;
 mod collectors;
 mod downloads;
 mod incidents;
+mod lang;
 mod monitor;
 mod profile;
 mod responses;
@@ -430,6 +431,8 @@ struct SettingsView {
     watch_removable: bool,
     auto_virustotal: bool,
     auto_update: bool,
+    /// "ru" or "en": the language in use.
+    language: &'static str,
     /// A development build: its autostart entry would point at a build that needs the dev server.
     dev_build: bool,
 }
@@ -444,6 +447,7 @@ fn get_settings(state: State<'_, AppState>) -> SettingsView {
         watch_removable: settings.watch_removable,
         auto_virustotal: settings.auto_virustotal,
         auto_update: settings.auto_update,
+        language: lang::code(),
         dev_build: cfg!(debug_assertions),
     }
 }
@@ -460,6 +464,19 @@ fn set_watch_downloads(state: State<'_, AppState>, enabled: bool) {
     let mut store = lock(&state.settings);
     store.settings.watch_downloads = enabled;
     store.save();
+}
+
+/// Changes the language of the texts the backend produces. The interface reloads itself.
+#[tauri::command(async)]
+fn set_language(state: State<'_, AppState>, language: String) -> Result<(), String> {
+    if language != "ru" && language != "en" {
+        return Err("Unknown language.".to_string());
+    }
+    lang::set(&language);
+    let mut store = lock(&state.settings);
+    store.settings.language = Some(language);
+    store.save();
+    Ok(())
 }
 
 /// Switches one of the on/off settings that have no command of their own.
@@ -523,6 +540,9 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
 
+            let settings = shell::SettingsStore::load(data_dir.join("settings.json"));
+            lang::set(settings.settings.language.as_deref().unwrap_or_else(lang::system));
+
             app.manage(AppState {
                 sys: Mutex::new(System::new()?),
                 protection: Mutex::new(None),
@@ -530,7 +550,7 @@ pub fn run() {
                 scanner: scanner::Scanner::new(),
                 profile: Mutex::new(profile::Profile::load(data_dir.join("profile.json"))),
                 responses: Mutex::new(responses::Store::load(&data_dir)),
-                settings: Mutex::new(shell::SettingsStore::load(data_dir.join("settings.json"))),
+                settings: Mutex::new(settings),
                 downloads: Mutex::new(downloads::Watcher::load(
                     data_dir.join("downloads.json"),
                     [
@@ -610,6 +630,7 @@ pub fn run() {
             set_watch_downloads,
             get_downloads_status,
             set_option,
+            set_language,
             set_auto_update,
             get_update_status,
             check_update,

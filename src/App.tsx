@@ -6,6 +6,7 @@ import {
   inTauri,
   usePolling,
   type AiStatus,
+  type AppSettings,
   type AutostartEntry,
   type Connection,
   type Incident,
@@ -19,6 +20,7 @@ import {
   type ScanResult,
 } from "./lib/api";
 import { ScanPage, type ScanRequest, type ScanState } from "./pages/ScanPage";
+import { applyLang } from "./lib/i18n";
 import { ResponsesPage } from "./pages/ResponsesPage";
 import { assess } from "./lib/score";
 import { OverviewPage, type Sample } from "./pages/OverviewPage";
@@ -68,6 +70,12 @@ export default function App() {
   // Scan state lives here so a scan keeps running, and its results stay, while other pages are open.
   const [model, setModel] = useState<ModelInfo | null>(null);
   const [scan, setScan] = useState<ScanState>({ busy: false, progress: null, label: "", results: null, error: null });
+
+  useEffect(() => {
+    call<AppSettings>("get_settings")
+      .then((settings) => applyLang(settings.language))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     call<ModelInfo>("get_model_info")

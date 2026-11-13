@@ -33,6 +33,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
+sys-locale = "0.3.2"
 
 
 # Feature extraction loops over every byte of a file; unoptimized it is too slow to use.
