@@ -19,6 +19,10 @@ export interface ProcessInfo {
   cpu: number;
   memory: number;
   flags: string[];
+  /** Whether the file has a valid digital signature; null until it has been checked. */
+  signed?: boolean | null;
+  /** Who signed the file, when the signature is valid. */
+  publisher?: string | null;
 }
 
 export interface Connection {

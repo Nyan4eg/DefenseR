@@ -1,77 +1,210 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { FolderOpen, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
+import { Avatar, Chip, EmptyState, friendlyName, Rise, StatTile, Switch } from "../components/kit";
 import { autostartDialog } from "../components/ResponseActions";
-import { Badge, Card, ConfirmDialog, FlagBadges, Loading, PageHeader } from "../components/ui";
-import { call, type AutostartEntry } from "../lib/api";
+import { Card, ConfirmDialog, FlagBadges, Loading, PageHeader, SearchInput } from "../components/ui";
+import { call, formatTime, type AutostartEntry, type DisabledAutostart, type ResponsesState } from "../lib/api";
 import { tr } from "../lib/i18n";
+
+type Filter = "all" | "on" | "off" | "flagged";
+
+/** A startup entry, whether it is on or was turned off through DefenseR. */
+interface Row {
+  key: string;
+  name: string;
+  command: string;
+  source: string;
+  scope: "user" | "machine";
+  flags: string[];
+  /** Set for entries that are on. */
+  entry: AutostartEntry | null;
+  /** Set for entries that were turned off. */
+  disabled: DisabledAutostart | null;
+}
+
+/** Where the entry lives, in words. */
+function origin(source: string): { label: string; icon: typeof KeyRound; once: boolean } {
+  const registry = /^HK(CU|LM)\\/i.test(source);
+  return {
+    label: registry ? tr("Реестр Windows", "Windows Registry") : tr("Папка автозагрузки", "Startup folder"),
+    icon: registry ? KeyRound : FolderOpen,
+    once: /RunOnce$/i.test(source),
+  };
+}
 
 interface Props {
   autostart: AutostartEntry[] | null;
-  /** Called after an entry is turned off, so the lists refresh. */
+  /** The entries turned off through DefenseR live in the responses state. */
+  responses: ResponsesState | null;
+  /** Called after a change, so the lists refresh. */
   onChanged: () => void;
 }
 
-export function AutostartPage({ autostart, onChanged }: Props) {
-  const [asking, setAsking] = useState<AutostartEntry | null>(null);
+export function AutostartPage({ autostart, responses, onChanged }: Props) {
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
+  const [asking, setAsking] = useState<Row | null>(null);
+  const [forgetting, setForgetting] = useState<Row | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const sorted = [...(autostart ?? [])].sort((a, b) => b.flags.length - a.flags.length || a.name.localeCompare(b.name));
-  const flagged = sorted.filter((e) => e.flags.length > 0).length;
+  const all = useMemo(() => {
+    const on: Row[] = (autostart ?? []).map((entry) => ({
+      key: `on|${entry.source}|${entry.name}`,
+      name: entry.name,
+      command: entry.command,
+      source: entry.source,
+      scope: entry.scope,
+      flags: entry.flags,
+      entry,
+      disabled: null,
+    }));
+    const off: Row[] = (responses?.autostart ?? []).map((item) => ({
+      key: `off|${item.id}`,
+      name: item.name,
+      command: item.command,
+      source: item.source,
+      scope: item.scope,
+      flags: [],
+      entry: null,
+      disabled: item,
+    }));
+    return [...on, ...off];
+  }, [autostart, responses]);
 
-  const disable = async ({ source, name }: AutostartEntry) => {
+  const enabled = all.filter((row) => row.entry).length;
+  const disabled = all.length - enabled;
+  const flagged = all.filter((row) => row.flags.length > 0).length;
+
+  const rows = all
+    .filter((row) => filter === "all" || (filter === "on" ? row.entry : filter === "off" ? row.disabled : row.flags.length > 0))
+    .filter((row) => {
+      const q = query.trim().toLowerCase();
+      return !q || row.name.toLowerCase().includes(q) || row.command.toLowerCase().includes(q);
+    })
+    .sort((a, b) => b.flags.length - a.flags.length || Number(!!a.disabled) - Number(!!b.disabled) || a.name.localeCompare(b.name));
+
+  const run = async (row: Row, command: string, args: Record<string, unknown>) => {
     setAsking(null);
+    setForgetting(null);
     setError(null);
+    setBusy(row.key);
     try {
-      await call("disable_autostart", { source, name });
+      await call(command, args);
     } catch (e) {
       setError(String(e));
     }
+    setBusy(null);
     onChanged();
   };
+
+  const turnOff = (row: Row) => run(row, "disable_autostart", { source: row.source, name: row.name });
+  const turnOn = (row: Row) => run(row, "enable_autostart", { id: row.disabled?.id });
+  const toggle = (next: Filter) => setFilter(filter === next ? "all" : next);
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title={tr("Автозагрузка", "Startup")}
-        subtitle={
-          autostart
-            ? tr(`Записей: ${autostart.length} · требуют внимания: ${flagged}`, `Entries: ${autostart.length} · need attention: ${flagged}`)
-            : tr("Сбор данных…", "Collecting data…")
-        }
+        subtitle={tr("Что запускается само при входе в Windows. Выключите лишнее — программа останется на месте, а запись можно включить обратно", "What starts on its own when you sign in to Windows. Turn off what you do not need — the program stays installed, and the entry can be turned back on")}
       />
-      {error && <div className="mb-4 rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-2.5 text-sm text-rose-200">{error}</div>}
+
+      <div className="mb-4 flex gap-3">
+        <StatTile icon={Rocket} label={tr("Всего записей", "All entries")} value={all.length} onClick={() => setFilter("all")} active={filter === "all"} />
+        <StatTile icon={Power} label={tr("Включено", "On")} value={enabled} tone="accent" hint={tr("запускаются при входе", "start when you sign in")} onClick={() => toggle("on")} active={filter === "on"} />
+        <StatTile icon={PowerOff} label={tr("Выключено вами", "Turned off by you")} value={disabled} tone="info" hint={tr("можно включить обратно", "can be turned back on")} onClick={() => toggle("off")} active={filter === "off"} />
+        <StatTile
+          icon={TriangleAlert}
+          label={tr("Требуют внимания", "Need attention")}
+          value={flagged}
+          tone={flagged > 0 ? "danger" : "neutral"}
+          hint={flagged > 0 ? tr("нажмите, чтобы показать", "click to show") : tr("всё в порядке", "all clear")}
+          onClick={() => toggle("flagged")}
+          active={filter === "flagged"}
+        />
+      </div>
+
+      <div className="mb-3 flex items-center gap-3">
+        <SearchInput value={query} onChange={setQuery} placeholder={tr("Название или команда", "Name or command")} />
+      </div>
+      {error && <div className="mb-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-2.5 text-sm text-rose-200">{error}</div>}
 
       <Card className="min-h-0 flex-1 overflow-auto p-2">
         {!autostart ? (
           <Loading />
-        ) : sorted.length === 0 ? (
-          <div className="p-10 text-center text-sm text-white/40">{tr("Записей автозагрузки нет", "No startup entries")}</div>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={Rocket}
+            tone="neutral"
+            title={all.length === 0 ? tr("Записей автозагрузки нет", "No startup entries") : tr("Здесь пусто", "Nothing here")}
+            text={all.length === 0 ? undefined : tr("Под этот фильтр не попала ни одна запись.", "No entry matches this filter.")}
+          />
         ) : (
-          sorted.map((entry) => (
-            <div key={`${entry.source}\\${entry.name}`} className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-white/[0.04]">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{entry.name}</span>
-                  <Badge tone={entry.scope === "machine" ? "accent" : "neutral"}>
-                    {entry.scope === "machine" ? tr("Все пользователи", "All users") : tr("Текущий пользователь", "Current user")}
-                  </Badge>
-                  <FlagBadges flags={entry.flags} />
+          rows.map((row, index) => {
+            const from = origin(row.source);
+            const on = row.entry !== null;
+            return (
+              <Rise key={row.key} index={index}>
+                <div className={`flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-white/[0.035] ${on ? "" : "opacity-60 hover:opacity-100"}`}>
+                  <Avatar name={row.name} muted={!on} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-medium">{friendlyName(row.name)}</span>
+                      <FlagBadges flags={row.flags} />
+                      {row.disabled && <Chip tone="info">{tr(`выключено ${formatTime(row.disabled.disabledAt)}`, `turned off ${formatTime(row.disabled.disabledAt)}`)}</Chip>}
+                    </div>
+                    <div className="mt-1 truncate font-mono text-xs text-white/45" title={row.command}>
+                      {row.command}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <Chip icon={row.scope === "machine" ? Users : User} title={row.source}>
+                        {row.scope === "machine" ? tr("Для всех пользователей", "For all users") : tr("Только для вас", "Only for you")}
+                      </Chip>
+                      <Chip icon={from.icon} title={row.source}>
+                        {from.label}
+                      </Chip>
+                      {from.once && (
+                        <Chip title={tr("Windows выполнит эту запись один раз и удалит её сама", "Windows runs this entry once and then removes it itself")}>
+                          {tr("Сработает один раз", "Runs once")}
+                        </Chip>
+                      )}
+                    </div>
+                  </div>
+                  {row.disabled && (
+                    <button
+                      onClick={() => setForgetting(row)}
+                      title={tr("Удалить запись навсегда", "Delete the entry permanently")}
+                      className="shrink-0 rounded-lg p-2 text-white/35 hover:bg-rose-400/10 hover:text-rose-300"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                  <Switch
+                    checked={on}
+                    disabled={busy === row.key}
+                    label={on ? tr("Выключить запуск при входе", "Stop it starting at sign-in") : tr("Включить обратно", "Turn back on")}
+                    onChange={() => (on ? setAsking(row) : turnOn(row))}
+                  />
                 </div>
-                <div className="mt-1 truncate font-mono text-xs text-white/55" title={entry.command}>{entry.command}</div>
-                <div className="mt-0.5 truncate text-xs text-white/30" title={entry.source}>{entry.source}</div>
-              </div>
-              <button
-                onClick={() => setAsking(entry)}
-                className="shrink-0 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/65 hover:border-rose-400/40 hover:bg-rose-400/10 hover:text-rose-200"
-              >
-                {tr("Отключить", "Disable")}
-              </button>
-            </div>
-          ))
+              </Rise>
+            );
+          })
         )}
       </Card>
 
-      {asking && (
-        <ConfirmDialog {...autostartDialog(asking.name, asking.scope)} danger onConfirm={() => disable(asking)} onCancel={() => setAsking(null)} />
+      {asking && <ConfirmDialog {...autostartDialog(asking.name, asking.scope)} danger onConfirm={() => turnOff(asking)} onCancel={() => setAsking(null)} />}
+      {forgetting && (
+        <ConfirmDialog
+          title={tr(`Удалить запись «${forgetting.name}» навсегда?`, `Delete the entry “${forgetting.name}” permanently?`)}
+          body={tr(
+            "DefenseR забудет эту запись, и вернуть её в автозагрузку будет нельзя. Сама программа останется на месте.",
+            "DefenseR will forget this entry, and it can no longer be restored to startup. The program itself will stay where it is.",
+          )}
+          confirmLabel={tr("Удалить навсегда", "Delete permanently")}
+          danger
+          onConfirm={() => run(forgetting, "forget_autostart", { id: forgetting.disabled?.id })}
+          onCancel={() => setForgetting(null)}
+        />
       )}
     </div>
   );

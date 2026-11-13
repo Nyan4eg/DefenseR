@@ -4,13 +4,15 @@ import { ConfirmDialog } from "./ui";
 import { call, type ResponseTarget } from "../lib/api";
 import { tr } from "../lib/i18n";
 
-type Action = "kill" | "quarantine" | "block" | "autostart";
+export type Action = "kill" | "quarantine" | "block" | "autostart";
 
 interface Props {
   target: ResponseTarget;
   /** Program name for the dialog texts. */
   name: string;
   onDone: () => void;
+  /** Show only these actions, e.g. just "end process" in a list of processes. */
+  only?: Action[];
 }
 
 const DONE: Record<Action, string> = {
@@ -26,8 +28,8 @@ export function autostartDialog(name: string, scope: "user" | "machine" | null) 
     title: tr(`Убрать «${name}» из автозагрузки?`, `Remove “${name}” from startup?`),
     body:
       tr(
-        "Запись перестанет запускаться при входе в Windows. Сама программа останется на месте, а запись можно вернуть на странице «Реакции».",
-        "The entry will no longer run when you sign in to Windows. The program itself will stay where it is, and the entry can be restored on the Responses page.",
+        "Запись перестанет запускаться при входе в Windows. Сама программа останется на месте, а запись можно включить обратно на странице «Автозагрузка».",
+        "The entry will no longer run when you sign in to Windows. The program itself will stay where it is, and the entry can be turned back on from the Startup page.",
       ) +
       (scope === "user"
         ? ""
@@ -40,7 +42,7 @@ export function autostartDialog(name: string, scope: "user" | "machine" | null) 
 }
 
 /** Buttons for acting on a process or file. Every action asks for confirmation first. */
-export function ResponseActions({ target, name, onDone }: Props) {
+export function ResponseActions({ target, name, onDone, only }: Props) {
   const [asking, setAsking] = useState<Action | null>(null);
   const [busy, setBusy] = useState<Action | null>(null);
   const [done, setDone] = useState<Action[]>([]);
@@ -94,7 +96,7 @@ export function ResponseActions({ target, name, onDone }: Props) {
     <>
       <div className="flex flex-wrap items-center gap-2">
         {buttons
-          .filter((b) => b.available)
+          .filter((b) => b.available && (!only || only.includes(b.action)))
           .map(({ action, label, icon: Icon }) =>
             done.includes(action) ? (
               <span key={action} className="px-1 text-xs text-emerald-300">

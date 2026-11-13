@@ -71,9 +71,39 @@ fn get_overview(state: State<'_, AppState>) -> system::Overview {
     system::collect(&mut lock(&state.sys))
 }
 
+/// A running process with what is known about its file's signature.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcessView {
+    #[serde(flatten)]
+    info: processes::ProcessInfo,
+    /// Whether the file has a valid signature; `None` until the file has been scanned.
+    signed: Option<bool>,
+    /// Who signed it, when the signature is valid.
+    publisher: Option<String>,
+}
+
 #[tauri::command(async)]
-fn get_processes(state: State<'_, AppState>) -> Vec<processes::ProcessInfo> {
-    processes::collect(&mut lock(&state.sys))
+fn get_processes(state: State<'_, AppState>) -> Vec<ProcessView> {
+    let list = processes::collect(&mut lock(&state.sys));
+    // Many processes share a file, so each file is looked up once.
+    let mut known: HashMap<String, (Option<bool>, Option<String>)> = HashMap::new();
+    list.into_iter()
+        .map(|info| {
+            let (signed, publisher) = match &info.exe {
+                Some(exe) => known
+                    .entry(exe.clone())
+                    .or_insert_with(|| {
+                        let signature = state.scanner.cached(std::path::Path::new(exe)).and_then(|result| result.signature);
+                        let valid = signature.as_ref().map(|signature| signature.status == scanner::signature::SignatureStatus::Valid);
+                        (valid, signature.filter(|_| valid == Some(true)).and_then(|signature| signature.signer))
+                    })
+                    .clone(),
+                None => (None, None),
+            };
+            ProcessView { info, signed, publisher }
+        })
+        .collect()
 }
 
 #[tauri::command(async)]

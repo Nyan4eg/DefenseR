@@ -178,7 +178,7 @@ export default function App() {
             {page === "settings" && <SettingsPage hasKey={hasKey} onChanged={refresh} />}
             {page === "processes" && <ProcessesPage processes={processes} onChanged={refresh} />}
             {page === "network" && <NetworkPage connections={connections} processes={processes} onChanged={refresh} />}
-            {page === "autostart" && <AutostartPage autostart={autostart} onChanged={refresh} />}
+            {page === "autostart" && <AutostartPage autostart={autostart} responses={responses} onChanged={refresh} />}
           </motion.div>
         </AnimatePresence>
       </main>

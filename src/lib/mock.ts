@@ -5,7 +5,18 @@ import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, Process
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
 
-const processNames = ["chrome.exe", "Code.exe", "explorer.exe", "svchost.exe", "Telegram.exe", "MsMpEng.exe", "steam.exe", "node.exe"];
+const demoApps: { name: string; folder: string; publisher: string | null; count: number; memory: number }[] = [
+  { name: "chrome.exe", folder: "C:\\Program Files\\Google\\Chrome\\Application", publisher: "Google LLC", count: 9, memory: 310 },
+  { name: "Code.exe", folder: "C:\\Program Files\\Microsoft VS Code", publisher: "Microsoft Corporation", count: 6, memory: 260 },
+  { name: "explorer.exe", folder: "C:\\Windows", publisher: "Microsoft Windows", count: 1, memory: 340 },
+  { name: "svchost.exe", folder: "C:\\Windows\\System32", publisher: "Microsoft Windows", count: 14, memory: 28 },
+  { name: "Telegram.exe", folder: "C:\\Users\\demo\\AppData\\Roaming\\Telegram Desktop", publisher: "Telegram FZ-LLC", count: 1, memory: 420 },
+  { name: "MsMpEng.exe", folder: "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform", publisher: "Microsoft Windows Publisher", count: 1, memory: 230 },
+  { name: "steam.exe", folder: "C:\\Program Files (x86)\\Steam", publisher: "Valve Corp.", count: 3, memory: 120 },
+  { name: "node.exe", folder: "C:\\Program Files\\nodejs", publisher: "OpenJS Foundation", count: 2, memory: 150 },
+  { name: "Discord.exe", folder: "C:\\Users\\demo\\AppData\\Local\\Discord\\app-1.0", publisher: "Discord Inc.", count: 5, memory: 180 },
+  { name: "obs-portable.exe", folder: "D:\\Tools\\obs", publisher: null, count: 1, memory: 510 },
+];
 
 function overview(): Overview {
   return {
@@ -19,15 +30,22 @@ function overview(): Overview {
 }
 
 function processes(): ProcessInfo[] {
-  const list: ProcessInfo[] = processNames.map((name, i) => ({
-    pid: 1000 + i * 412,
-    parentPid: 4,
-    name,
-    exe: `C:\\Program Files\\${name.replace(".exe", "")}\\${name}`,
-    cpu: Math.random() * 6,
-    memory: (80 + Math.random() * 900) * MB,
-    flags: [],
-  }));
+  const list: ProcessInfo[] = [];
+  demoApps.forEach((app, appIndex) => {
+    for (let i = 0; i < app.count; i++) {
+      list.push({
+        pid: 1000 + appIndex * 412 + i * 8,
+        parentPid: i === 0 ? 4 : 1000 + appIndex * 412,
+        name: app.name,
+        exe: `${app.folder}\\${app.name}`,
+        cpu: Math.random() * (i === 0 ? 5 : 1.2),
+        memory: app.memory * (0.5 + Math.random()) * MB,
+        flags: [],
+        signed: app.publisher !== null,
+        publisher: app.publisher,
+      });
+    }
+  });
   list.push({
     pid: 9120,
     parentPid: 1000,
@@ -36,21 +54,33 @@ function processes(): ProcessInfo[] {
     cpu: 1.4,
     memory: 42 * MB,
     flags: ["temp-path"],
+    signed: false,
+    publisher: null,
   });
+  list.push({ pid: 4, parentPid: null, name: "System", exe: null, cpu: 0.3, memory: 2 * MB, flags: [], signed: null, publisher: null });
   return list;
 }
 
 const connections: Connection[] = [
   { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51422, remoteAddr: "142.250.74.14", remotePort: 443, state: "ESTABLISHED", pid: 1000, remoteIsPublic: true },
+  { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51431, remoteAddr: "142.251.98.17", remotePort: 443, state: "ESTABLISHED", pid: 1008, remoteIsPublic: true },
+  { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51440, remoteAddr: "140.82.114.26", remotePort: 443, state: "ESTABLISHED", pid: 1016, remoteIsPublic: true },
   { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51437, remoteAddr: "149.154.167.51", remotePort: 443, state: "ESTABLISHED", pid: 2648, remoteIsPublic: true },
+  { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51502, remoteAddr: "162.159.130.234", remotePort: 443, state: "ESTABLISHED", pid: 4296, remoteIsPublic: true },
+  { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51610, remoteAddr: "13.107.42.14", remotePort: 443, state: "CLOSE_WAIT", pid: 1412, remoteIsPublic: true },
+  { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51700, remoteAddr: "203.0.113.77", remotePort: 8885, state: "ESTABLISHED", pid: 9120, remoteIsPublic: true },
+  { protocol: "TCP", localAddr: "192.168.1.20", localPort: 51422, remoteAddr: "192.168.1.1", remotePort: 53, state: "ESTABLISHED", pid: 2236, remoteIsPublic: false },
   { protocol: "TCP", localAddr: "127.0.0.1", localPort: 1420, remoteAddr: "0.0.0.0", remotePort: 0, state: "LISTEN", pid: 3884, remoteIsPublic: false },
   { protocol: "TCP", localAddr: "0.0.0.0", localPort: 135, remoteAddr: "0.0.0.0", remotePort: 0, state: "LISTEN", pid: 2236, remoteIsPublic: false },
+  { protocol: "TCP", localAddr: "0.0.0.0", localPort: 27036, remoteAddr: "0.0.0.0", remotePort: 0, state: "LISTEN", pid: 3472, remoteIsPublic: false },
   { protocol: "UDP", localAddr: "0.0.0.0", localPort: 5353, remoteAddr: null, remotePort: null, state: null, pid: 1000, remoteIsPublic: false },
 ];
 
 let autostart: AutostartEntry[] = [
   { name: "SecurityHealth", command: "%windir%\\system32\\SecurityHealthSystray.exe", source: "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "machine", flags: [] },
   { name: "Steam", command: '"C:\\Program Files (x86)\\Steam\\steam.exe" -silent', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: [] },
+  { name: "Discord", command: '"C:\\Users\\demo\\AppData\\Local\\Discord\\Update.exe" --processStart Discord.exe', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: [] },
+  { name: "AnyDesk.lnk", command: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\AnyDesk.lnk", source: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup", scope: "machine", flags: [] },
   { name: "OldUpdater", command: '"C:\\Program Files\\OldApp\\updater.exe"', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: ["missing-file"] },
 ];
 
@@ -118,8 +148,10 @@ const responses: ResponsesState = {
   quarantine: [
     { id: "a1b2c3d4e5f60718", name: "crack_setup.exe", originalPath: "C:\\Users\\demo\\Downloads\\crack_setup.exe", size: 3.4 * MB, quarantinedAt: now - 3600 },
   ],
-  blocks: [],
-  autostart: [],
+  blocks: [{ id: "DefenseR block 1", name: "obs-portable.exe", path: "D:\\Tools\\obs\\obs-portable.exe", blockedAt: now - 7200 }],
+  autostart: [
+    { id: "d1", name: "EpicGamesLauncher", command: '"C:\\Program Files (x86)\\Epic Games\\Launcher\\EpicGamesLauncher.exe" -silent', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", disabledAt: now - 86400 },
+  ],
   log: [{ at: now - 3600, action: "quarantine", target: "C:\\Users\\demo\\Downloads\\crack_setup.exe", error: null }],
 };
 
