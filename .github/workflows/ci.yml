@@ -16,7 +16,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      # Not `npm ci`: it rejects the lock file over optional platform packages that npm itself leaves out.
+      - run: npm install --no-audit --no-fund
       # Also produces dist/, which the Rust build embeds.
       - run: npm run build
       - uses: dtolnay/rust-toolchain@stable
