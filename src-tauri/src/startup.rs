@@ -260,7 +260,8 @@ mod tests {
         let (hive, _, path) = run_key(source).unwrap();
         let name = format!("DefenseR test {}", std::process::id());
         let command = r#""C:\No Such Folder\app.exe" --flag"#;
-        hive.open_subkey_with_flags(path, KEY_SET_VALUE).unwrap().set_value(&name, &command).unwrap();
+        // The key itself can be missing on a machine where nothing has ever used it.
+        hive.create_subkey(path).unwrap().0.set_value(&name, &command).unwrap();
 
         let item = disable(Path::new("."), source, &name, 1).unwrap();
         let key = hive.open_subkey(path).unwrap();
