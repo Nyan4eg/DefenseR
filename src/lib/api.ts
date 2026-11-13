@@ -80,7 +80,8 @@ export interface BrowserExtension {
   trusted?: boolean;
 }
 
-export type AutostartKind = "registry" | "folder" | "task" | "service";
+/** "hook" is one of the out-of-the-way places: a taken-over launch, Winlogon, a WMI subscription, a rewritten browser shortcut. */
+export type AutostartKind = "registry" | "folder" | "task" | "service" | "hook";
 
 /** The `source` of scheduled tasks and of services, as the backend names them. */
 export const TASKS_SOURCE = "Task Scheduler";

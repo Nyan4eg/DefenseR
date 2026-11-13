@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BadgeCheck, CalendarClock, Eraser, LoaderCircle, ShieldCheck, Clock, Cog, FileCode, FolderOpen, ShieldQuestion, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
+import { BadgeCheck, CalendarClock, Eraser, EyeOff, LoaderCircle, ShieldCheck, Clock, Cog, FileCode, FolderOpen, ShieldQuestion, KeyRound, Power, PowerOff, Rocket, Trash2, TriangleAlert, User, Users } from "lucide-react";
 import { Avatar, Chip, EmptyState, friendlyName, Rise, StatTile, Switch } from "../components/kit";
 import { autostartDialog } from "../components/ResponseActions";
 import { Card, ConfirmDialog, FlagBadges, Loading, PageHeader, SearchInput, Tabs } from "../components/ui";
@@ -7,8 +7,20 @@ import { call, formatTime, type AutostartEntry, type DisabledAutostart, type Res
 import { tr } from "../lib/i18n";
 
 type Filter = "all" | "on" | "off" | "flagged" | "unsigned";
-/** The three places a program can start itself from. */
-type Place = "all" | "startup" | "task" | "service";
+/** The places a program can start itself from; "hook" are the out-of-the-way ones. */
+type Place = "all" | "startup" | "task" | "service" | "hook";
+
+/** What each out-of-the-way place is called, by the entry's source. */
+const HOOKS: Record<string, string> = {
+  "Image File Execution Options": tr("Подмена запуска программы", "Launch takeover"),
+  SilentProcessExit: tr("Запуск при закрытии программы", "Start on another program's exit"),
+  Winlogon: tr("Вход в Windows", "Windows sign-in"),
+  AppInit_DLLs: tr("Библиотека для всех программ", "Library for every program"),
+  "Logon script": tr("Сценарий входа", "Logon script"),
+  Screensaver: tr("Заставка", "Screen saver"),
+  "WMI subscription": tr("Подписка WMI", "WMI subscription"),
+  "Browser shortcut": tr("Ярлык браузера", "Browser shortcut"),
+};
 
 /** A startup entry, whether it is on or was turned off through DefenseR. */
 interface Row {
@@ -32,6 +44,7 @@ interface Row {
 function origin(source: string, place: Row["place"]): { label: string; icon: typeof KeyRound; once: boolean } {
   if (place === "task") return { label: tr("Планировщик заданий", "Task Scheduler"), icon: CalendarClock, once: false };
   if (place === "service") return { label: tr("Служба Windows", "Windows service"), icon: Cog, once: false };
+  if (place === "hook") return { label: HOOKS[source] ?? source, icon: EyeOff, once: false };
   const registry = /^HK(CU|LM)\\/i.test(source);
   return {
     label: registry ? tr("Реестр Windows", "Windows Registry") : tr("Папка автозагрузки", "Startup folder"),
@@ -65,7 +78,7 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
       key: `on|${entry.source}|${entry.name}`,
       name: entry.name,
       title: entry.label ?? friendlyName(entry.name),
-      place: entry.kind === "task" || entry.kind === "service" ? entry.kind : "startup",
+      place: entry.kind === "task" || entry.kind === "service" || entry.kind === "hook" ? entry.kind : "startup",
       trigger: entry.trigger ?? null,
       command: entry.command,
       source: entry.source,
@@ -94,17 +107,19 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
   const inPlace = all.filter((row) => place === "all" || row.place === place);
   const enabled = inPlace.filter((row) => row.entry).length;
   const disabled = inPlace.length - enabled;
-  const flagged = inPlace.filter((row) => row.flags.length > 0).length;
+  /** Entries with a warning sign, and everything in the out-of-the-way places. */
+  const needsLook = (row: Row) => row.flags.length > 0 || row.place === "hook";
+  const flagged = inPlace.filter(needsLook).length;
   const isUnsigned = (row: Row) => row.entry?.signed === false && !row.entry.trusted;
   const unsigned = inPlace.filter(isUnsigned).length;
 
   const rows = inPlace
-    .filter((row) => filter === "all" || (filter === "on" ? row.entry : filter === "off" ? row.disabled : filter === "unsigned" ? isUnsigned(row) : row.flags.length > 0))
+    .filter((row) => filter === "all" || (filter === "on" ? row.entry : filter === "off" ? row.disabled : filter === "unsigned" ? isUnsigned(row) : needsLook(row)))
     .filter((row) => {
       const q = query.trim().toLowerCase();
       return !q || row.name.toLowerCase().includes(q) || row.title.toLowerCase().includes(q) || row.command.toLowerCase().includes(q);
     })
-    .sort((a, b) => b.flags.length - a.flags.length || Number(!!a.disabled) - Number(!!b.disabled) || a.title.localeCompare(b.title));
+    .sort((a, b) => Number(needsLook(b)) - Number(needsLook(a)) || b.flags.length - a.flags.length || Number(!!a.disabled) - Number(!!b.disabled) || a.title.localeCompare(b.title));
 
   const run = async (row: Row, command: string, args: Record<string, unknown>) => {
     setAsking(null);
@@ -185,6 +200,7 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
             { id: "startup", label: tr(`Автозагрузка · ${count("startup")}`, `Startup · ${count("startup")}`) },
             { id: "task", label: tr(`Планировщик · ${count("task")}`, `Scheduler · ${count("task")}`) },
             { id: "service", label: tr(`Службы · ${count("service")}`, `Services · ${count("service")}`) },
+            { id: "hook", label: tr(`Скрытые места · ${count("hook")}`, `Hidden places · ${count("hook")}`) },
           ]}
         />
         <span className="flex-1" />
@@ -226,6 +242,11 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium" title={row.name}>{row.title}</span>
                       <FlagBadges flags={row.flags} />
+                      {row.place === "hook" && (
+                        <Chip icon={TriangleAlert} tone="warn" title={tr("Обычные программы этим местом не пользуются; подробности — в инциденте", "Ordinary programs do not use this place; the incident has the details")}>
+                          {tr("Необычное место", "Unusual place")}
+                        </Chip>
+                      )}
                       {row.disabled && <Chip tone="info">{tr(`выключено ${formatTime(row.disabled.disabledAt)}`, `turned off ${formatTime(row.disabled.disabledAt)}`)}</Chip>}
                     </div>
                     <div className="mt-1 truncate font-mono text-xs text-white/45" title={row.command}>
@@ -285,12 +306,18 @@ export function AutostartPage({ autostart, responses, onChanged }: Props) {
                       <Trash2 size={15} />
                     </button>
                   )}
-                  <Switch
-                    checked={on}
-                    disabled={busy === row.key}
-                    label={on ? tr("Выключить", "Turn off") : tr("Включить обратно", "Turn back on")}
-                    onChange={() => (on ? setAsking(row) : turnOn(row))}
-                  />
+                  {row.place === "hook" ? (
+                    <span className="w-28 shrink-0 text-right text-xs leading-snug text-white/40" title={tr("DefenseR не меняет такие записи сам: ошибка здесь может помешать входу в Windows. Как убрать запись, сказано в её инциденте", "DefenseR does not change such entries itself: a mistake here can break signing in to Windows. The incident says how to remove the entry")}>
+                      {tr("убирается вручную — см. инцидент", "removed by hand — see the incident")}
+                    </span>
+                  ) : (
+                    <Switch
+                      checked={on}
+                      disabled={busy === row.key}
+                      label={on ? tr("Выключить", "Turn off") : tr("Включить обратно", "Turn back on")}
+                      onChange={() => (on ? setAsking(row) : turnOn(row))}
+                    />
+                  )}
                 </div>
               </Rise>
             );

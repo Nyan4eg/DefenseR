@@ -114,7 +114,7 @@ Hundreds of processes folded into the programs they belong to, with real icons, 
 </tr>
 </table>
 
-**And also:** a behaviour profile that learns which programs normally go online and reports new ones · a weekly summary of what was checked · a scheduled weekly scan of the folders you choose · a one-file report for asking for help, with your name and folders taken out · a trusted list for files, publishers and extensions · a notification-area icon, Windows notifications, start with Windows · automatic signed updates · English and Russian.
+**And also:** a behaviour profile that learns which programs normally go online and reports new ones · out-of-the-way persistence places (launch takeover through IFEO, Winlogon, AppInit_DLLs, WMI subscriptions, rewritten browser shortcuts) · a weekly summary of what was checked · a scheduled weekly scan of the folders you choose · a one-file report for asking for help, with your name and folders taken out · a trusted list for files, publishers and extensions · a notification-area icon, Windows notifications, start with Windows · automatic signed updates · English and Russian.
 
 ## How a finding is made
 

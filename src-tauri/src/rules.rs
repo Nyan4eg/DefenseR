@@ -5,6 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::collectors::autostart::AutostartEntry;
+use crate::collectors::hooks;
 use crate::collectors::extensions::Extension;
 use crate::collectors::netconfig::{self, NetConfig};
 use crate::collectors::processes::ProcessInfo;
@@ -178,9 +179,108 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
     }
 }
 
+/// The incident for an entry from one of the out-of-the-way places. These are reported for
+/// as long as they exist, whether or not they were there on the first run: ordinary software
+/// does not use them, so "it was already here" is no reason to keep quiet. The user dismisses
+/// the ones they set up themself.
+fn hook_finding(entry: &AutostartEntry) -> Finding {
+    const KEY: &str = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+    let program = entry.name.trim_end_matches(" (32-bit)");
+    let value = |name: &str| trs(format!("значение {name}"), format!("value {name}"));
+    let (severity, where_it_is, summary) = match entry.source.as_str() {
+        hooks::IFEO => (
+            Severity::High,
+            format!(r"{KEY}\Image File Execution Options\{program}, {}", value("Debugger")),
+            tr(
+                "Windows настроена запускать другую программу вместо этой. Так подключают отладчики, а некоторые утилиты так подменяют диспетчер задач. Тем же способом вредоносные программы перехватывают запуск чужих программ и не дают открыться средствам защиты. Если вы не настраивали это сами, удалите значение Debugger в указанном разделе реестра.",
+                "Windows is set to start another program instead of this one. Debuggers are attached this way, and some utilities replace Task Manager this way. Malware uses the same thing to take over the launch of other programs and to keep security tools from opening. If you did not set this up yourself, delete the Debugger value in the registry key shown.",
+            ),
+        ),
+        hooks::SILENT_EXIT => (
+            Severity::High,
+            format!(r"{KEY}\SilentProcessExit\{program}, {}", value("MonitorProcess")),
+            tr(
+                "Windows настроена запускать эту команду каждый раз, когда закрывается указанная программа. Это средство для разработчиков; обычные программы им не пользуются, зато так закрепляются вредоносные. Если вы не настраивали это сами, удалите указанный раздел реестра.",
+                "Windows is set to run this command every time the named program closes. It is a tool for developers; ordinary programs do not use it, while malware uses it to stay on a computer. If you did not set this up yourself, delete the registry key shown.",
+            ),
+        ),
+        hooks::WINLOGON => (
+            Severity::High,
+            if entry.scope == "user" { format!(r"HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon, {}", value("Shell")) } else { format!(r"{KEY}\Winlogon, {}", value(&entry.name)) },
+            tr(
+                "Изменено то, что Windows запускает при входе пользователя раньше всего остального. Обычно здесь только Проводник и стандартная программа входа; посторонняя программа в этом месте запускается при каждом входе и видна лишь в реестре. Не удаляйте значение целиком: без него вход в Windows перестанет работать. Верните стандартное: Shell — explorer.exe, Userinit — C:\\Windows\\system32\\userinit.exe с запятой на конце.",
+                "What Windows starts at sign-in before anything else has been changed. Normally only Explorer and the standard sign-in program are here; a foreign program in this place starts at every sign-in and is visible only in the registry. Do not delete the value altogether: signing in to Windows would stop working without it. Put the standard one back: Shell is explorer.exe, Userinit is C:\\Windows\\system32\\userinit.exe followed by a comma.",
+            ),
+        ),
+        hooks::APPINIT => (
+            Severity::High,
+            format!(r"{KEY}\Windows, {}", value("AppInit_DLLs")),
+            tr(
+                "Эта библиотека загружается в каждую программу, у которой есть окно, и работает внутри неё с её правами. Способ устарел, и современные программы им не пользуются; им пользуются программы, которым нужно быть внутри всех остальных. Если вы не знаете, чья это библиотека, очистите значение AppInit_DLLs.",
+                "This library is loaded into every program that has a window and runs inside it with its rights. The method is outdated and modern programs do not use it; it is used by programs that need to be inside all the others. If you do not know whose library this is, clear the AppInit_DLLs value.",
+            ),
+        ),
+        hooks::WMI => (
+            Severity::High,
+            "WMI, root\\subscription".to_string(),
+            tr(
+                "В Windows есть подписка WMI, которая сама выполняет команду или скрипт, когда происходит заданное событие: вход пользователя, запуск программы, наступление времени. Её не видно ни в автозагрузке, ни в планировщике, поэтому это излюбленный способ скрытого закрепления; обычные программы пользуются им редко. Удалить подписку можно в PowerShell от имени администратора: Get-CimInstance -Namespace root/subscription -ClassName __EventConsumer, затем Remove-CimInstance для нужной записи.",
+                "Windows has a WMI subscription that runs a command or a script on its own when a set event happens: a sign-in, a program starting, a time coming. It shows neither in startup nor in the Task Scheduler, which makes it a favourite way to stay hidden; ordinary programs rarely use it. A subscription can be removed in PowerShell as administrator: Get-CimInstance -Namespace root/subscription -ClassName __EventConsumer, then Remove-CimInstance for the entry in question.",
+            ),
+        ),
+        hooks::LOGON_SCRIPT => (
+            Severity::Medium,
+            format!(r"HKCU\Environment, {}", value("UserInitMprLogonScript")),
+            tr(
+                "При вашем входе в Windows выполняется сценарий, заданный в переменных среды. В организациях так подключают сетевые диски; на домашнем компьютере этого обычно нет, и тем же способом закрепляются вредоносные программы. Если вы не настраивали это сами, удалите значение UserInitMprLogonScript.",
+                "A script set in the environment variables runs when you sign in to Windows. Organizations connect network drives this way; a home computer usually has nothing here, and malware uses the same place to stay. If you did not set this up yourself, delete the UserInitMprLogonScript value.",
+            ),
+        ),
+        hooks::SCREENSAVER => (
+            Severity::Medium,
+            format!(r"HKCU\Control Panel\Desktop, {}", value("SCRNSAVE.EXE")),
+            tr(
+                "Заставка — это обычная программа, которую Windows запускает, когда компьютер простаивает. Здесь заставкой назначен файл не из папки Windows. Если вы не ставили стороннюю заставку, выберите в параметрах Windows другую или отключите её.",
+                "A screen saver is an ordinary program that Windows starts when the computer is idle. Here a file from outside the Windows folder is set as the screen saver. If you did not install a third-party screen saver, pick another one in Windows settings or turn it off.",
+            ),
+        ),
+        _ => (
+            Severity::Medium,
+            entry.name.clone(),
+            tr(
+                "Ярлык браузера переписан: он открывает не то, что открывал при установке. Так рекламные и вредоносные программы подсовывают свою стартовую страницу, своё расширение или пускают трафик браузера через свой сервер. Если вы не делали этого сами, отправьте ярлык в карантин и создайте новый из меню «Пуск».",
+                "A browser shortcut has been rewritten: it does not open what it opened when it was installed. Adware and malware do this to push their own start page or extension, or to send the browser's traffic through their server. If you did not do this yourself, send the shortcut to quarantine and make a new one from the Start menu.",
+            ),
+        ),
+    };
+    let title = entry.label.clone().unwrap_or_else(|| entry.name.clone());
+    let mut details = evidence(&[(tr("Что запускается", "What is started"), &entry.command), (tr("Где находится", "Where it is"), &where_it_is)]);
+    if let Some(trigger) = &entry.trigger {
+        // For a shortcut this line says what is wrong with it rather than when it runs.
+        let label = if entry.source == hooks::SHORTCUT { tr("Что не так", "What is wrong") } else { tr("Когда", "When") };
+        details.push(Evidence { label: label.to_string(), value: trigger.clone() });
+    }
+    Finding {
+        id: format!("persistence-hook|{}", autostart_key(entry).to_lowercase()),
+        rule: "persistence-hook",
+        severity,
+        title,
+        summary: summary.to_string(),
+        evidence: details,
+        // A shortcut is a file and can go to quarantine; the rest live in the registry and in
+        // WMI, where DefenseR changes nothing.
+        target: if entry.source == hooks::SHORTCUT { Target::file(&entry.name) } else { None },
+        timeline: Vec::new(),
+    }
+}
+
 fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>>, findings: &mut Vec<Finding>) {
     let own_exe = std::env::current_exe().ok().map(|exe| exe.to_string_lossy().to_lowercase());
     for entry in entries {
+        if entry.kind == "hook" {
+            findings.push(hook_finding(entry));
+            continue;
+        }
         let subject = format!("{}|{}", entry.source.to_lowercase(), entry.name.to_lowercase());
         let shown = entry.label.as_deref().unwrap_or(&entry.name);
         // What the entry is called in a title, and where it lives.

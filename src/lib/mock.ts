@@ -84,6 +84,7 @@ let autostart: AutostartEntry[] = [
   { name: "OldUpdater", command: '"C:\\Program Files\\OldApp\\updater.exe"', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: ["missing-file"] },
   { name: "\\Demo\\Browser Update", label: "Browser Update", command: '"C:\\Program Files\\Demo Browser\\update.exe" /scheduled', source: "Task Scheduler", scope: "machine", flags: [], kind: "task", trigger: tr("по расписанию", "on a schedule") },
   { name: "\\Wake Check", label: "Wake Check", command: 'powershell.exe -File "C:\\Users\\demo\\AppData\\Local\\Temp\\check.ps1"', source: "Task Scheduler", scope: "machine", flags: ["temp-path"], kind: "task", trigger: tr("при входе в Windows", "when you sign in") },
+  { name: "C:\Users\demo\Desktop\Google Chrome.lnk", label: tr("Ярлык «Google Chrome» изменён", "Shortcut “Google Chrome” was changed"), command: '"C:\Program Files\Google\Chrome\Application\chrome.exe" http://search.example.net/?from=shortcut', source: "Browser shortcut", scope: "user", flags: [], kind: "hook", trigger: tr("в ярлык вписан адрес сайта, который откроется вместо обычной страницы", "the shortcut carries a site address that opens instead of the usual page") },
   { name: "DemoVpnService", label: "Demo VPN Service", command: '"C:\\Program Files\\Demo VPN\\vpnservice.exe"', source: "Services", scope: "machine", flags: [], kind: "service", trigger: tr("при запуске компьютера", "when the computer starts") },
 ];
 

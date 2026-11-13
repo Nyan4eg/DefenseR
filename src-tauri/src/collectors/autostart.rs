@@ -16,7 +16,7 @@ pub struct AutostartEntry {
     /// "user" or "machine".
     pub scope: &'static str,
     pub flags: Vec<String>,
-    /// "registry", "folder", "task" or "service".
+    /// "registry", "folder", "task", "service", or "hook" for the places in `hooks`.
     pub kind: &'static str,
     /// A name to show instead of `name`, when `name` is an identifier.
     pub label: Option<String>,
@@ -24,12 +24,15 @@ pub struct AutostartEntry {
     pub trigger: Option<String>,
 }
 
-pub const RUN_KEYS: [(HKEY, &str, &str, &str); 5] = [
+pub const RUN_KEYS: [(HKEY, &str, &str, &str); 7] = [
     (HKEY_CURRENT_USER, "HKCU", "user", r"Software\Microsoft\Windows\CurrentVersion\Run"),
     (HKEY_CURRENT_USER, "HKCU", "user", r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
     (HKEY_LOCAL_MACHINE, "HKLM", "machine", r"Software\Microsoft\Windows\CurrentVersion\Run"),
     (HKEY_LOCAL_MACHINE, "HKLM", "machine", r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
     (HKEY_LOCAL_MACHINE, "HKLM", "machine", r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"),
+    // The same thing set through a policy; hardly anyone looks here.
+    (HKEY_CURRENT_USER, "HKCU", "user", r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run"),
+    (HKEY_LOCAL_MACHINE, "HKLM", "machine", r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run"),
 ];
 
 const STARTUP_FOLDERS: [(&str, &str); 2] = [
@@ -91,12 +94,14 @@ pub fn command_flags(command: &str) -> Vec<String> {
     flags
 }
 
-/// Everything that starts on its own: the Run keys, the Startup folders, services and
-/// scheduled tasks. Tasks are missing until the Task Scheduler has answered once.
+/// Everything that starts on its own: the Run keys, the Startup folders, services,
+/// scheduled tasks and the out-of-the-way places in `hooks`. Tasks are missing until the
+/// Task Scheduler has answered once.
 pub fn collect() -> Vec<AutostartEntry> {
     let mut entries = run_entries();
     entries.extend(super::persistence::services());
     entries.extend(super::persistence::tasks().unwrap_or_default());
+    entries.extend(super::hooks::collect());
     entries
 }
 

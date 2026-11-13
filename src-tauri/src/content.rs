@@ -227,6 +227,43 @@ pub fn shortcut_target(bytes: &[u8]) -> Option<String> {
     (!path.is_empty()).then_some(path)
 }
 
+/// The arguments a shortcut passes to the program it opens. `None` when it passes none or
+/// the file is not a shortcut.
+pub fn shortcut_arguments(bytes: &[u8]) -> Option<String> {
+    let u16_at = |at: usize| Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?) as usize);
+    let u32_at = |at: usize| Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?) as usize);
+    if u32_at(0)? != 0x4C {
+        return None;
+    }
+    let flags = u32_at(0x14)?;
+    let mut at = 0x4C;
+    // The list of shell items and the record of the target come first, when present.
+    if flags & 1 != 0 {
+        at += 2 + u16_at(at)?;
+    }
+    if flags & 2 != 0 {
+        at += u32_at(at)?;
+    }
+    let wide = flags & 0x80 != 0;
+    // Then the strings, in this order: name, relative path, working folder, arguments.
+    for bit in [0x04, 0x08, 0x10, 0x20] {
+        if flags & bit == 0 {
+            continue;
+        }
+        let size = u16_at(at)? * if wide { 2 } else { 1 };
+        let data = bytes.get(at + 2..at + 2 + size)?;
+        if bit == 0x20 {
+            return Some(if wide {
+                String::from_utf16_lossy(&data.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect::<Vec<u16>>())
+            } else {
+                String::from_utf8_lossy(data).into_owned()
+            });
+        }
+        at += 2 + size;
+    }
+    None
+}
+
 /// Everything readable in a shortcut, lowercased: its strings are stored both as UTF-16 and as bytes.
 fn shortcut_text(bytes: &[u8]) -> String {
     let wide: Vec<u16> = bytes.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect();
@@ -403,6 +440,31 @@ pub fn inspect(path: &Path, place: Place, score: &dyn Fn(&[u8]) -> Option<Verdic
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn shortcut_arguments_are_read() {
+        let text = |value: &str| {
+            let units: Vec<u16> = value.encode_utf16().collect();
+            let mut bytes = (units.len() as u16).to_le_bytes().to_vec();
+            bytes.extend(units.iter().flat_map(|unit| unit.to_le_bytes()));
+            bytes
+        };
+        // A header that announces a name, arguments and UTF-16 strings, and nothing before them.
+        let mut lnk = vec![0u8; 0x4C];
+        lnk[0] = 0x4C;
+        lnk[0x14..0x18].copy_from_slice(&(0x04u32 | 0x20 | 0x80).to_le_bytes());
+        lnk.extend(text("Браузер"));
+        lnk.extend(text("--proxy-server=10.0.0.5:8080 https://start.example.net"));
+        assert_eq!(shortcut_arguments(&lnk).as_deref(), Some("--proxy-server=10.0.0.5:8080 https://start.example.net"));
+
+        // The same without arguments.
+        let mut plain = vec![0u8; 0x4C];
+        plain[0] = 0x4C;
+        plain[0x14..0x18].copy_from_slice(&(0x04u32 | 0x80).to_le_bytes());
+        plain.extend(text("Браузер"));
+        assert_eq!(shortcut_arguments(&plain), None);
+        assert_eq!(shortcut_arguments(b"not a shortcut"), None);
+    }
 
     #[test]
     fn shortcut_target_is_read() {

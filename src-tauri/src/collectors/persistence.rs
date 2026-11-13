@@ -34,7 +34,18 @@ $tasks = @(Get-ScheduledTask -ErrorAction Stop | ForEach-Object {
     triggers = @($_.Triggers | ForEach-Object { "$($_.CimClass.CimClassName)" })
   }
 })
-[pscustomobject]@{ tasks = $tasks } | ConvertTo-Json -Compress -Depth 5
+$wmi = @()
+try {
+  $wmi += @(Get-CimInstance -Namespace root/subscription -ClassName CommandLineEventConsumer -ErrorAction Stop | ForEach-Object {
+    $run = "$($_.CommandLineTemplate)"; if (-not $run) { $run = "$($_.ExecutablePath)" }
+    [pscustomobject]@{ name = "$($_.Name)"; kind = 'command'; run = $run }
+  })
+  $wmi += @(Get-CimInstance -Namespace root/subscription -ClassName ActiveScriptEventConsumer -ErrorAction Stop | ForEach-Object {
+    $run = "$($_.ScriptFileName)"; if (-not $run) { $run = "$($_.ScriptingEngine): $($_.ScriptText)" }
+    [pscustomobject]@{ name = "$($_.Name)"; kind = 'script'; run = $run }
+  })
+} catch {}
+[pscustomobject]@{ tasks = $tasks; wmi = @($wmi) } | ConvertTo-Json -Compress -Depth 5
 "#;
 
 /// Replaces `%NAME%` with the environment variable's value; unknown names are left as they are.
@@ -192,21 +203,31 @@ fn tasks_from_json(json: &Value) -> Vec<AutostartEntry> {
     entries
 }
 
-fn read_tasks() -> Option<Vec<AutostartEntry>> {
+/// The scheduled tasks and, from the same call, the WMI subscriptions that run something.
+fn read_tasks() -> Option<(Vec<AutostartEntry>, Vec<AutostartEntry>)> {
     let output = Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command", TASK_SCRIPT])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
     let json = serde_json::from_slice::<Value>(&output.stdout).ok()?;
-    json["tasks"].is_array().then(|| tasks_from_json(&json))
+    json["tasks"].is_array().then(|| (tasks_from_json(&json), super::hooks::wmi_from_json(&json)))
 }
 
-static TASK_CACHE: Mutex<Option<(Instant, Vec<AutostartEntry>)>> = Mutex::new(None);
+static TASK_CACHE: Mutex<Option<(Instant, (Vec<AutostartEntry>, Vec<AutostartEntry>))>> = Mutex::new(None);
 
 /// The scheduled tasks, read at most once a minute. `None` until the Task Scheduler has
 /// answered at least once; after that a failed read keeps the last answer.
 pub fn tasks() -> Option<Vec<AutostartEntry>> {
+    scheduled().map(|(tasks, _)| tasks)
+}
+
+/// The WMI subscriptions that run a command or a script; as fresh as `tasks`.
+pub fn wmi_consumers() -> Option<Vec<AutostartEntry>> {
+    scheduled().map(|(_, wmi)| wmi)
+}
+
+fn scheduled() -> Option<(Vec<AutostartEntry>, Vec<AutostartEntry>)> {
     // Held while reading, so two callers do not both start PowerShell.
     let mut cache = TASK_CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let fresh = cache.as_ref().is_some_and(|(read_at, _)| read_at.elapsed() < TASKS_MAX_AGE);
@@ -222,7 +243,7 @@ pub fn tasks() -> Option<Vec<AutostartEntry>> {
             }
         }
     }
-    cache.as_ref().map(|(_, tasks)| tasks.clone())
+    cache.as_ref().map(|(_, found)| found.clone())
 }
 
 /// Makes the next `tasks()` ask the Task Scheduler again; called after a task is changed.
