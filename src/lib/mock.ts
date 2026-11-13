@@ -1,6 +1,5 @@
 // Sample data for working on the UI in a plain browser. Never used inside the Tauri app.
-import { tr } from "./i18n";
-import { lang } from "./i18n";
+import { lang, tr } from "./i18n";
 import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, ProcessInfo, ProtectionStatus, ResponsesState, ScanResult, TrustState } from "./api";
 
 const GB = 1024 ** 3;
@@ -22,7 +21,7 @@ const demoApps: { name: string; folder: string; publisher: string | null; count:
 function overview(): Overview {
   return {
     hostName: "DEMO-PC",
-    osVersion: "Windows 11 Pro (демо-данные)",
+    osVersion: tr("Windows 11 Pro (демо-данные)", "Windows 11 Pro (demo data)"),
     uptimeSecs: 93_784,
     cpuUsage: 12 + Math.random() * 25,
     memoryUsed: (11 + Math.random()) * GB,
@@ -100,32 +99,48 @@ const now = Math.floor(Date.now() / 1000);
 
 let incidents: Incident[] = [
   {
-    id: "process-masquerade|demo",
-    rule: "process-masquerade",
+    id: "chain|demo",
+    rule: "chain",
     severity: "high",
-    title: "svchost.exe запущен не из папки Windows",
-    summary: "Процесс носит имя системного компонента Windows, но его файл лежит в другом месте. Так вредоносные программы маскируются под системные.",
+    title: tr("invoice_viewer.exe: скачан, запущен, закрепился и вышел в сеть", "invoice_viewer.exe: downloaded, run, made itself start again and went online"),
+    summary: tr(
+      "Недавно появившийся файл без подписи за несколько минут прошёл весь путь, которым обычно идут вредоносные программы. По отдельности каждое событие безобидно; вместе — повод разобраться.",
+      "A recently arrived unsigned file went, within minutes, through every step malware usually takes. Each event alone is harmless; together they are a reason to look into it.",
+    ),
     evidence: [
-      { label: "Процесс", value: "svchost.exe" },
-      { label: "PID", value: "7312" },
-      { label: "Путь", value: "C:\\Users\\demo\\AppData\\Roaming\\svchost.exe" },
+      { label: tr("Файл", "File"), value: "C:\\Users\\demo\\Downloads\\invoice_viewer.exe" },
+      { label: tr("Откуда", "Came from"), value: "files-share.example.net" },
+      { label: tr("Цифровая подпись", "Digital signature"), value: tr("нет", "none") },
+      { label: "SHA-256", value: "9f2c41d7a0b35e6688c1f04a7d92b6e3c5a1087fd4e2b9c06a7315d8e4f0b2a1" },
     ],
-    firstSeen: now - 540,
-    lastSeen: now,
+    firstSeen: now - 900,
+    lastSeen: now - 60,
     status: "active",
-    explanation: null,
-    target: { pid: 7312, path: "C:\\Users\\demo\\AppData\\Roaming\\svchost.exe" },
+    explanation: tr(
+      "Что произошло: файл скачали с файлообменника, запустили, и он сразу прописал себя в автозагрузку и связался с сервером в интернете. Так ведёт себя и обычный установщик, но у него почти всегда есть подпись издателя, а здесь её нет.\n\nЧто сделать: если вы не ждали этот файл — завершите процесс, уберите файл в карантин и отключите запись автозагрузки. Если сомневаетесь, сначала проверьте его на VirusTotal.",
+      "What happened: the file was downloaded from a file-sharing site, run, and it at once added itself to startup and contacted a server on the internet. An ordinary installer behaves this way too, but it almost always carries a publisher's signature, and this one has none.\n\nWhat to do: if you were not expecting this file, end the process, quarantine the file and turn off the startup entry. If in doubt, look it up on VirusTotal first.",
+    ),
+    target: { pid: 8844, path: "C:\\Users\\demo\\Downloads\\invoice_viewer.exe", autostart: { source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", name: "InvoiceViewer" } },
+    timeline: [
+      { at: now - 900, text: tr("Файл появился в папке «Загрузки» (с сайта files-share.example.net)", "The file appeared in Downloads (from files-share.example.net)") },
+      { at: now - 780, text: tr("Файл запущен", "The file was run") },
+      { at: now - 770, text: tr("Добавил себя в автозагрузку: запись «InvoiceViewer»", "Added itself to startup: entry “InvoiceViewer”") },
+      { at: now - 700, text: tr("Вышел в интернет: 203.0.113.47:443", "Went online: 203.0.113.47:443") },
+    ],
   },
   {
     id: "process-temp-path|demo",
     rule: "process-temp-path",
     severity: "medium",
-    title: "setup_tmp.exe запущен из временной папки",
-    summary: "Программы редко работают из временных папок постоянно. Так ведут себя установщики и обновления, но также и вредоносные программы.",
+    title: tr("setup_tmp.exe запущен из временной папки", "setup_tmp.exe is running from the temp folder"),
+    summary: tr(
+      "Программы редко работают из временных папок постоянно. Так ведут себя установщики и обновления, но также и вредоносные программы.",
+      "Programs rarely run from temp folders for long. Installers and updates behave this way, but so does malware.",
+    ),
     evidence: [
-      { label: "Процесс", value: "setup_tmp.exe" },
+      { label: tr("Процесс", "Process"), value: "setup_tmp.exe" },
       { label: "PID", value: "9120" },
-      { label: "Путь", value: "C:\\Users\\demo\\AppData\\Local\\Temp\\7zS41A\\setup_tmp.exe" },
+      { label: tr("Путь", "Path"), value: "C:\\Users\\demo\\AppData\\Local\\Temp\\7zS41A\\setup_tmp.exe" },
     ],
     firstSeen: now - 120,
     lastSeen: now,
@@ -137,9 +152,9 @@ let incidents: Incident[] = [
     id: "autostart-missing-file|demo",
     rule: "autostart-missing-file",
     severity: "low",
-    title: "Автозагрузка «OldUpdater» ссылается на несуществующий файл",
-    summary: "Файл из записи автозагрузки не найден. Чаще всего это остаток удалённой программы.",
-    evidence: [{ label: "Команда", value: '"C:\\Program Files\\OldApp\\updater.exe"' }],
+    title: tr("Автозагрузка «OldUpdater» ссылается на несуществующий файл", "Startup entry “OldUpdater” points to a file that does not exist"),
+    summary: tr("Файл из записи автозагрузки не найден. Чаще всего это остаток удалённой программы.", "The file named in the startup entry was not found. Most often this is a leftover of a program that was removed."),
+    evidence: [{ label: tr("Команда", "Command"), value: '"C:\\Program Files\\OldApp\\updater.exe"' }],
     firstSeen: now - 86_400,
     lastSeen: now - 7200,
     status: "resolved",
