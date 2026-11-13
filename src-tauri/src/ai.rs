@@ -99,6 +99,12 @@ fn describe(incident: &Incident) -> String {
     for item in &incident.evidence {
         text.push_str(&format!("{}: {}\n", item.label, item.value));
     }
+    if let Some(first) = incident.timeline.first() {
+        text.push_str("Хронология (время от первого события):\n");
+        for event in &incident.timeline {
+            text.push_str(&format!("+{} мин: {}\n", event.at.saturating_sub(first.at) / 60, event.text));
+        }
+    }
     text.push_str("</incident>");
     redact(&text)
 }
@@ -198,6 +204,7 @@ mod tests {
             status: Status::Active,
             explanation: None,
             target: None,
+            timeline: Vec::new(),
             reputation: None,
         };
         let task = tauri::async_runtime::spawn(async move { explain("not-a-real-key", &incident) });

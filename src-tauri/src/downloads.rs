@@ -38,8 +38,19 @@ pub enum Place {
     Removable,
 }
 
+/// "The file <where> ...", for incident texts.
+pub fn located(place: Place) -> &'static str {
+    place.located()
+}
+
+/// A program that has just appeared in a watched place.
+pub struct Arrival {
+    pub path: String,
+    pub place: Place,
+    pub at: u64,
+}
+
 impl Place {
-    /// "The file <where> ...", for incident texts.
     fn located(self) -> &'static str {
         match self {
             Self::Downloads => "в папке загрузок",
@@ -108,6 +119,8 @@ pub struct Watcher {
     /// New files that are not ready to be checked yet.
     pending: HashMap<PathBuf, Place>,
     watched: Vec<Watched>,
+    /// New programs checked since they were last asked for.
+    arrived: Vec<Arrival>,
     settle: Duration,
     saved_at: u64,
 }
@@ -160,7 +173,7 @@ fn host_of(url: &str) -> Option<String> {
 }
 
 /// Where Windows recorded the file as downloaded from, if it did.
-fn source_host(path: &Path) -> Option<String> {
+pub fn source_host(path: &Path) -> Option<String> {
     let mut stream = path.as_os_str().to_owned();
     stream.push(":Zone.Identifier");
     let text = std::fs::read_to_string(stream).ok()?;
@@ -229,6 +242,7 @@ fn finding(result: &ScanResult, place: Place) -> Option<Finding> {
         summary,
         evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
         target: Target::file(&result.path),
+        timeline: Vec::new(),
     })
 }
 
@@ -241,7 +255,7 @@ impl Watcher {
         if data.since == 0 {
             data.since = now;
         }
-        Self { file, fixed, data, known: HashMap::new(), pending: HashMap::new(), watched: Vec::new(), settle: SETTLE, saved_at: now }
+        Self { file, fixed, data, known: HashMap::new(), pending: HashMap::new(), watched: Vec::new(), arrived: Vec::new(), settle: SETTLE, saved_at: now }
     }
 
     fn save(&mut self, now: u64) {
@@ -251,6 +265,11 @@ impl Watcher {
                 eprintln!("failed to save the new-files state: {error}");
             }
         }
+    }
+
+    /// The programs that have appeared since the last call.
+    pub fn take_arrivals(&mut self) -> Vec<Arrival> {
+        std::mem::take(&mut self.arrived)
     }
 
     pub fn status(&self) -> Status {
@@ -323,6 +342,7 @@ impl Watcher {
                     },
                 );
                 self.data.checked += 1;
+                self.arrived.push(Arrival { path: result.path.clone(), place, at: now });
             }
             let place = new.unwrap_or_else(|| self.place_of(path, roots));
             if let Some(finding) = finding(&result, place) {

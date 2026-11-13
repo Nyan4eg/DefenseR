@@ -43,7 +43,7 @@ pub fn startup_folders() -> Vec<(PathBuf, &'static str)> {
 }
 
 /// Pulls the executable path out of a command line: `"C:\a b\x.exe" --flag` or `C:\x.exe --flag`.
-fn executable_of(command: &str) -> Option<&str> {
+pub fn executable_of(command: &str) -> Option<&str> {
     let command = command.trim();
     if let Some(rest) = command.strip_prefix('"') {
         return rest.split('"').next();

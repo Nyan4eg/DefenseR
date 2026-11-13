@@ -74,6 +74,7 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
                     summary: "Программы редко работают из временных папок постоянно. Так ведут себя установщики и обновления, но также и вредоносные программы.".to_string(),
                     evidence: evidence(&[("Процесс", &process.name), ("PID", &pid), ("Путь", exe)]),
                     target: Target::process(process.pid, exe),
+                    timeline: Vec::new(),
                 });
             }
 
@@ -86,6 +87,7 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
                     summary: "Процесс носит имя системного компонента Windows, но его файл лежит в другом месте. Так вредоносные программы маскируются под системные.".to_string(),
                     evidence: evidence(&[("Процесс", &process.name), ("PID", &pid), ("Путь", exe)]),
                     target: Target::process(process.pid, exe),
+                    timeline: Vec::new(),
                 });
             }
         }
@@ -101,6 +103,7 @@ fn process_rules(processes: &[ProcessInfo], findings: &mut Vec<Finding>) {
                     summary: "Офисное приложение запустило командную оболочку или обработчик скриптов. Так срабатывают вредоносные макросы в документах.".to_string(),
                     evidence: evidence(&[("Родительский процесс", parent), ("Запущенный процесс", &process.name), ("PID", &pid)]),
                     target: Some(Target { pid: Some(process.pid), path: process.exe.clone(), autostart: None }),
+                    timeline: Vec::new(),
                 });
             }
         }
@@ -122,6 +125,7 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 summary: "Запись автозагрузки ссылается на временную папку. Обычные программы так не устанавливаются; это типичный способ закрепления вредоносных программ.".to_string(),
                 evidence: details.clone(),
                 target: Target::autostart(&entry.source, &entry.name),
+                timeline: Vec::new(),
             });
         }
 
@@ -134,6 +138,7 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 summary: "Файл из записи автозагрузки не найден. Чаще всего это остаток удалённой программы.".to_string(),
                 evidence: details.clone(),
                 target: Target::autostart(&entry.source, &entry.name),
+                timeline: Vec::new(),
             });
         }
 
@@ -148,6 +153,7 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 summary: "Этой записи не было при первом запуске DefenseR, либо её команда изменилась. Новые программы добавляют себя в автозагрузку при установке; так же закрепляются и вредоносные.".to_string(),
                 evidence: details,
                 target: Target::autostart(&entry.source, &entry.name),
+                timeline: Vec::new(),
             });
         }
     }
@@ -163,6 +169,7 @@ fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) 
             summary: "Microsoft Defender не проверяет файлы и программы в момент запуска.".to_string(),
             evidence: evidence(&[("Защита в реальном времени", "отключена")]),
             target: None,
+            timeline: Vec::new(),
         });
     }
 
@@ -176,6 +183,7 @@ fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) 
             summary: "Для части сетевых профилей брандмауэр не фильтрует входящие подключения.".to_string(),
             evidence: evidence(&[("Профили с отключённым брандмауэром", &disabled.join(", "))]),
             target: None,
+            timeline: Vec::new(),
         });
     }
 
@@ -188,6 +196,7 @@ fn protection_rules(protection: &ProtectionStatus, findings: &mut Vec<Finding>) 
             summary: "Microsoft Defender давно не получал обновлений и может не знать о новых угрозах.".to_string(),
             evidence: evidence(&[("Возраст баз, дней", &age.to_string())]),
             target: None,
+            timeline: Vec::new(),
         });
     }
 }

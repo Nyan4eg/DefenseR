@@ -65,6 +65,14 @@ impl Target {
     }
 }
 
+/// One step of a chain of events, for incidents that tell a story.
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+pub struct TimelineEvent {
+    /// When DefenseR first noticed it, Unix seconds.
+    pub at: u64,
+    pub text: String,
+}
+
 /// What a rule reports on one evaluation pass.
 pub struct Finding {
     /// Stable across passes for the same subject, so repeated findings map to one incident.
@@ -75,6 +83,8 @@ pub struct Finding {
     pub summary: String,
     pub evidence: Vec<Evidence>,
     pub target: Option<Target>,
+    /// The steps of the story, oldest first; empty for incidents about a single event.
+    pub timeline: Vec<TimelineEvent>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -95,6 +105,8 @@ pub struct Incident {
     /// Absent in incidents stored by earlier versions.
     #[serde(default)]
     pub target: Option<Target>,
+    #[serde(default)]
+    pub timeline: Vec<TimelineEvent>,
     /// What VirusTotal said about the file, once the user asked.
     #[serde(default)]
     pub reputation: Option<crate::vt::Reputation>,
@@ -221,12 +233,13 @@ impl Store {
                 Some(incident) => {
                     incident.last_seen = now;
                     // A later pass can know more about the same subject, such as a second opinion.
-                    if incident.severity != finding.severity || incident.summary != finding.summary {
+                    if incident.severity != finding.severity || incident.summary != finding.summary || incident.title != finding.title || incident.timeline != finding.timeline {
                         let raised = finding.severity > incident.severity;
                         incident.severity = finding.severity;
                         incident.title = finding.title;
                         incident.summary = finding.summary;
                         incident.evidence = finding.evidence;
+                        incident.timeline = finding.timeline;
                         changed = true;
                         if raised && incident.status != Status::Dismissed {
                             new.push(incident.clone());
@@ -255,6 +268,7 @@ impl Store {
                         status: Status::Active,
                         explanation: None,
                         target: finding.target,
+                        timeline: finding.timeline,
                         reputation: None,
                     };
                     new.push(incident.clone());
@@ -292,6 +306,7 @@ mod tests {
             summary: String::new(),
             evidence: Vec::new(),
             target: Target::autostart("HKCU", id),
+            timeline: Vec::new(),
         }
     }
 

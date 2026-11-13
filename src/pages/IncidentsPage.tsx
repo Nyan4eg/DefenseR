@@ -77,6 +77,20 @@ function IncidentCard({ incident, hasKey, onChanged, onOpenSettings }: CardProps
         )}
       </div>
 
+      {incident.timeline && incident.timeline.length > 0 && (
+        <ol className="mt-3 rounded-xl border border-white/8 px-4 py-3">
+          {incident.timeline.map((event, index) => (
+            <li key={index} className="relative flex gap-3 pb-3 text-sm last:pb-0">
+              {index < incident.timeline!.length - 1 && <span className="absolute left-[3px] top-3 h-full w-px bg-white/12" />}
+              <span className={`relative mt-1.5 size-[7px] shrink-0 rounded-full ${severity.bar}`} />
+              <span className="w-28 shrink-0 text-xs leading-5 text-white/40">{formatTime(event.at)}</span>
+              <span className="min-w-0 flex-1 break-words text-white/80">{event.text}</span>
+            </li>
+          ))}
+          <li className="mt-2 text-xs text-white/35">Время — когда DefenseR заметил событие; само оно могло случиться на несколько секунд раньше.</li>
+        </ol>
+      )}
+
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl bg-black/20 px-3 py-2.5 text-xs">
         {incident.evidence.map((item) => (
           <div key={item.label} className="contents">

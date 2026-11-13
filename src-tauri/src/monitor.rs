@@ -12,7 +12,7 @@ use crate::scanner::signature::SignatureStatus;
 use crate::scanner::Verdict;
 use crate::downloads::Place;
 use crate::vt::Reputation;
-use crate::{ai, downloads, lock, shell, vt, AppState};
+use crate::{ai, chains, downloads, lock, shell, vt, AppState};
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const PROFILE_SAVE_EVERY: u64 = 6;
@@ -59,6 +59,7 @@ fn scan_running_files(state: &AppState, processes: &[ProcessInfo]) -> Vec<Findin
                 summary: "У файла этой запущенной программы есть цифровая подпись, но она не сходится с содержимым: файл изменили уже после того, как издатель его подписал. Так бывает при повреждении файла, а также когда в чужую программу встраивают посторонний код.".to_string(),
                 evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
                 target: Target::process(process.pid, &result.path),
+                timeline: Vec::new(),
             });
         }
 
@@ -84,6 +85,7 @@ fn scan_running_files(state: &AppState, processes: &[ProcessInfo]) -> Vec<Findin
             summary: "Локальная модель оценила строение файла этой запущенной программы как характерное для вредоносных, и у файла нет действительной цифровой подписи. Модель ошибается, особенно на новых и редких программах, поэтому это повод проверить файл, а не приговор.".to_string(),
             evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
             target: Target::process(process.pid, &result.path),
+            timeline: Vec::new(),
         });
     }
     findings
@@ -149,8 +151,14 @@ pub fn run(app: AppHandle) {
             Place::Temp => settings.watch_temp,
             Place::Removable => settings.watch_removable,
         });
+        let connections = network::collect();
+        // What has happened to recently arrived files, put together.
+        let chain_findings = {
+            let arrivals = lock(&state.downloads).take_arrivals();
+            let lookup = |path: &Path| state.scanner.cached(path);
+            lock(&state.chains).observe(arrivals, &processes, &autostart, &connections, lookup, now)
+        };
         let behavior_findings = {
-            let connections = network::collect();
             let has_signature = |exe: &str| state.scanner.cached(Path::new(exe)).and_then(|r| r.signature).map(|s| s.status == SignatureStatus::Valid);
             let mut profile = lock(&state.profile);
             let findings = profile.observe(&processes, &connections, now, now.saturating_sub(last_pass), has_signature);
@@ -192,6 +200,9 @@ pub fn run(app: AppHandle) {
         findings.extend(file_findings);
         findings.extend(download_findings);
         findings.extend(behavior_findings);
+        // A chain tells the whole story of its file, so the single events give way to it.
+        findings.retain(|finding| !chain_findings.iter().any(|chain| chains::absorbs(chain, finding)));
+        findings.extend(chain_findings);
         // Nothing is raised about files the user trusts or that come from a publisher they trust.
         {
             let trust = lock(&state.trust);

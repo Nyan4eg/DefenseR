@@ -64,6 +64,8 @@ export interface Incident {
   explanation: string | null;
   /** The process and file the incident is about, when there is one to act on. */
   target: ResponseTarget | null;
+  /** The steps of a chain of events, oldest first. Empty for incidents about a single event. */
+  timeline?: { at: number; text: string }[];
   /** VirusTotal's answer about the file, once the user asked for it. */
   reputation?: Reputation | null;
 }

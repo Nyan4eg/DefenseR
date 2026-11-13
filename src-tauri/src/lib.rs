@@ -1,4 +1,5 @@
 mod ai;
+mod chains;
 mod collectors;
 mod downloads;
 mod incidents;
@@ -38,6 +39,7 @@ pub(crate) struct AppState {
     pub downloads: Mutex<downloads::Watcher>,
     pub updates: Mutex<update::Status>,
     pub trust: Mutex<trust::Store>,
+    pub chains: Mutex<chains::Store>,
     /// VirusTotal answers of this session, by SHA-256.
     pub reputations: Mutex<HashMap<String, vt::Reputation>>,
 }
@@ -543,6 +545,7 @@ pub fn run() {
                 )),
                 updates: Mutex::new(update::Status::default()),
                 trust: Mutex::new(trust::Store::load(data_dir.join("trust.json"))),
+                chains: Mutex::new(chains::Store::load(data_dir.join("chains.json"))),
                 reputations: Mutex::new(HashMap::new()),
             });
 

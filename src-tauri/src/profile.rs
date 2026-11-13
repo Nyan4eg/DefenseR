@@ -165,6 +165,7 @@ impl Profile {
                     },
                     evidence: evidence(None),
                     target: Target::process(process.pid, exe),
+                    timeline: Vec::new(),
                 });
             }
 
@@ -178,6 +179,7 @@ impl Profile {
                         summary: "Программа открыла порт, доступный другим компьютерам, чего раньше не делала. Так работают серверы, игры и средства удалённого доступа — в том числе установленные без вашего ведома.".to_string(),
                         evidence: evidence(Some(("Порт", port.to_string()))),
                         target: Target::process(process.pid, exe),
+                        timeline: Vec::new(),
                     });
                 }
             }
