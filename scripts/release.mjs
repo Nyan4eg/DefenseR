@@ -47,6 +47,25 @@ writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 console.log(`Собрано: ${join(bundle, installer)}`);
 if (buildOnly) process.exit(0);
 
-run("git", ["push", "origin", "HEAD"]);
-run("gh", ["release", "create", tag, join(bundle, installer), manifestPath, "--title", `DefenseR ${version}`, "--notes", notes]);
+// The network step most likely to fail for a moment: tried a few times, and git's own words are shown.
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const attempt = (what, command, commandArgs, tries = 3) => {
+  for (let turn = 1; ; turn++) {
+    const result = spawnSync(command, commandArgs, { cwd: root, encoding: "utf8" });
+    if (result.status === 0) return result.stdout.trim();
+    console.error(`${what}: попытка ${turn} из ${tries} не удалась.
+${(result.stderr || result.stdout || String(result.error ?? "")).trim()}`);
+    if (turn === tries) fail(`ВЫПУСК НЕ СОСТОЯЛСЯ: ${what.toLowerCase()} не удалось. Установщик собран, выпуск ${tag} не создан — запустите команду ещё раз.`);
+    sleep(turn * 10_000);
+  }
+};
+
+attempt("Отправка коммитов на GitHub", "git", ["push", "origin", "HEAD"]);
+attempt("Создание выпуска", "gh", ["release", "create", tag, join(bundle, installer), manifestPath, "--title", `DefenseR ${version}`, "--notes", notes], 2);
+
+// What installed copies will actually see: the manifest GitHub serves as the latest one.
+const served = attempt("Проверка выпуска", "gh", ["release", "view", "--json", "tagName,assets", "--jq", '.tagName + " " + ([.assets[].name] | join(","))']);
+if (!served.startsWith(`${tag} `) || !served.includes(installer) || !served.includes("latest.json")) {
+  fail(`ВЫПУСК НЕ СОСТОЯЛСЯ: последним на GitHub значится «${served}», а не ${tag} с установщиком и latest.json.`);
+}
 console.log(`Выпуск ${tag} опубликован: https://github.com/${repo}/releases/tag/${tag}`);

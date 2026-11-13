@@ -74,10 +74,10 @@ impl Profile {
         match serde_json::to_vec(&self.data) {
             Ok(bytes) => {
                 if let Err(error) = std::fs::write(&self.path, bytes) {
-                    eprintln!("failed to save the profile: {error}");
+                    crate::journal::error(&format!("failed to save the profile: {error}"));
                 }
             }
-            Err(error) => eprintln!("failed to serialise the profile: {error}"),
+            Err(error) => crate::journal::error(&format!("failed to serialise the profile: {error}")),
         }
     }
 

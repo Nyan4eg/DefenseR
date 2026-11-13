@@ -234,6 +234,22 @@ export interface WeekActivity {
   trusted: number;
 }
 
+/** How the background monitoring is doing, and the program's own journal. */
+export interface Diagnostics {
+  version: string;
+  /** Passes finished since the app started. */
+  passes: number;
+  lastPassAt: number;
+  lastPassMs: number;
+  /** The longest pass, not counting the first one. */
+  slowestPassMs: number;
+  /** What the last pass spent its time on. */
+  stages?: { name: string; ms: number }[];
+  logPath: string | null;
+  /** The last lines of the journal, oldest first. */
+  lines: string[];
+}
+
 /** The settings that decide where traffic goes. */
 export interface NetConfig {
   hosts: { address: string; name: string; blocks: boolean }[];
@@ -347,10 +363,19 @@ export function usePolling<T>(command: string, intervalMs: number, refreshKey = 
         .then((result) => alive && setData(result))
         .catch((error) => console.error(command, error));
     tick();
-    const timer = setInterval(tick, intervalMs);
+    // Nobody is looking while the window is hidden in the notification area: nothing is
+    // asked for then, and everything is fetched again the moment the window comes back.
+    const timer = setInterval(() => {
+      if (!document.hidden) tick();
+    }, intervalMs);
+    const onVisible = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [command, intervalMs, refreshKey]);
 

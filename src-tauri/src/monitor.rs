@@ -18,6 +18,8 @@ use crate::{ai, chains, downloads, lock, shell, vt, AppState};
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const PROFILE_SAVE_EVERY: u64 = 6;
+/// A pass that takes longer than this is written to the journal.
+const SLOW_PASS: Duration = Duration::from_secs(30);
 
 /// The rules whose files get a second opinion from VirusTotal when the user allowed that.
 const SECOND_OPINION_RULES: [&str; 3] = ["process-ml-malicious", "new-file-ml-malicious", "autostart-ml-malicious"];
@@ -234,20 +236,41 @@ pub fn run(app: AppHandle) {
     let mut last_pass = now_secs();
     let mut passes = 0u64;
     let mut next_lookup = Instant::now();
+    {
+        // Baseline keys saved by earlier versions are brought to today's form once.
+        let mut store = lock(&state.store);
+        if store.rewrite_baseline(rules::current_key) {
+            store.save();
+        }
+    }
     loop {
+        let started = Instant::now();
+        // How long each part of the pass takes, for the diagnostics page.
+        let mut stages: Vec<(&'static str, u64)> = Vec::new();
+        let mut lap_from = Instant::now();
+        let mut lap = |name: &'static str| {
+            stages.push((name, lap_from.elapsed().as_millis() as u64));
+            lap_from = Instant::now();
+        };
         let processes = processes::collect(&mut lock(&state.sys));
+        lap("processes");
         let autostart = autostart::collect();
+        lap("startup");
         // Until the Task Scheduler has answered, tasks are unknown rather than absent.
         let tasks_known = persistence::tasks().is_some();
         let protection = state.protection();
+        lap("protection");
         // Slow on the first pass, when every running program is new to the scanner.
         let mut file_findings = scan_running_files(&state, &processes);
+        lap("running-files");
         // The programs that start on their own are looked at too; results are cached per file,
         // so this costs something only when a file is new or has changed.
         let running: HashSet<String> = processes.iter().filter_map(|process| process.exe.as_ref()).map(|exe| exe.to_lowercase()).collect();
         file_findings.extend(scan_startup_files(&state, &autostart, &running));
+        lap("startup-files");
         let browser_extensions = extensions::collect();
         let net_config = netconfig::collect();
+        lap("extensions-hosts");
 
         let now = now_secs();
         let settings = lock(&state.settings).settings.clone();
@@ -257,7 +280,9 @@ pub fn run(app: AppHandle) {
             Place::Temp => settings.watch_temp,
             Place::Removable => settings.watch_removable,
         });
+        lap("new-files");
         let connections = network::collect();
+        lap("network");
         // What has happened to recently arrived files, put together.
         let chain_findings = {
             let arrivals = lock(&state.downloads).take_arrivals();
@@ -304,6 +329,7 @@ pub fn run(app: AppHandle) {
             answers.extend(second_opinion(&state, &mut download_findings, &mut next_lookup, now));
         }
 
+        lap("chains-profile");
         let mut store = lock(&state.store);
         let groups: &[&str] = if tasks_known { &["entry", "service", "extension", "netconfig", "task"] } else { &["entry", "service", "extension", "netconfig"] };
         let current = |group: &str| -> Vec<String> {
@@ -352,6 +378,25 @@ pub fn run(app: AppHandle) {
         }
         drop(store);
         shell::notify_incidents(&app, &merge.new);
+
+        lap("rules");
+        let took = started.elapsed();
+        {
+            let mut health = lock(&state.health);
+            health.stages = stages.iter().map(|(name, ms)| crate::Stage { name, ms: *ms }).collect();
+            health.passes += 1;
+            health.last_pass_at = now_secs();
+            health.last_pass_ms = took.as_millis() as u64;
+            health.slowest_pass_ms = health.slowest_pass_ms.max(if passes > 1 { health.last_pass_ms } else { 0 });
+        }
+        // The first pass scans every running program and is expected to be slow.
+        if passes > 1 && took > SLOW_PASS {
+            crate::journal::error(&format!("a monitoring pass took {:.1} s ({} processes, {} startup entries)", took.as_secs_f32(), processes.len(), autostart.len()));
+        }
+        if !merge.new.is_empty() {
+            let rules: Vec<&str> = merge.new.iter().map(|incident| incident.rule.as_str()).collect();
+            crate::journal::info(&format!("new incidents: {}", rules.join(", ")));
+        }
 
         std::thread::sleep(INTERVAL);
     }

@@ -81,10 +81,10 @@ impl Store {
         match serde_json::to_vec_pretty(&self.state) {
             Ok(bytes) => {
                 if let Err(error) = std::fs::write(self.dir.join("responses.json"), bytes) {
-                    eprintln!("failed to save responses: {error}");
+                    crate::journal::error(&format!("failed to save responses: {error}"));
                 }
             }
-            Err(error) => eprintln!("failed to serialise responses: {error}"),
+            Err(error) => crate::journal::error(&format!("failed to serialise responses: {error}")),
         }
     }
 

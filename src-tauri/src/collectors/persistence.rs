@@ -215,6 +215,7 @@ pub fn tasks() -> Option<Vec<AutostartEntry>> {
             Some(tasks) => *cache = Some((Instant::now(), tasks)),
             // Try again on the next call rather than a minute later, but not in a tight loop.
             None => {
+                crate::journal::error("the Task Scheduler did not answer (PowerShell Get-ScheduledTask failed)");
                 if let Some((read_at, _)) = cache.as_mut() {
                     *read_at = Instant::now() - TASKS_MAX_AGE + Duration::from_secs(10);
                 }

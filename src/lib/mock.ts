@@ -370,6 +370,18 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       return autostart.map((entry, index) => ({ ...entry, signed: entry.flags.length > 0 ? null : index % 4 !== 2, publisher: index % 4 !== 2 ? "Demo Software LLC" : null, interpreter: entry.command.startsWith("powershell") }));
     case "get_icons":
       return {};
+    case "get_diagnostics":
+      return {
+        version: "0.12.1",
+        passes: 412,
+        lastPassAt: Math.floor(Date.now() / 1000) - 4,
+        lastPassMs: 840,
+        slowestPassMs: 3200,
+        logPath: "C:\\Users\\demo\\AppData\\Roaming\\com.defenser.app\\defenser.log",
+        lines: ["2026-11-13 09:02:11 UTC INFO  DefenseR 0.12.1 started", "2026-11-13 11:40:02 UTC ERROR the Task Scheduler did not answer (PowerShell Get-ScheduledTask failed)", "2026-11-13 14:15:37 UTC INFO  new incidents: process-temp-path"],
+      };
+    case "show_journal":
+      return null;
     case "get_netconfig":
       return {
         hosts: [

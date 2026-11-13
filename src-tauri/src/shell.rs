@@ -73,7 +73,7 @@ impl SettingsStore {
     pub fn save(&self) {
         if let Ok(bytes) = serde_json::to_vec_pretty(&self.settings) {
             if let Err(error) = std::fs::write(&self.path, bytes) {
-                eprintln!("failed to save settings: {error}");
+                crate::journal::error(&format!("failed to save settings: {error}"));
             }
         }
     }
@@ -89,7 +89,7 @@ pub fn show_main_window(app: &AppHandle) {
 
 pub fn notify(app: &AppHandle, title: &str, body: &str) {
     if let Err(error) = app.notification().builder().title(title).body(body).show() {
-        eprintln!("failed to show a notification: {error}");
+        crate::journal::error(&format!("failed to show a notification: {error}"));
     }
 }
 

@@ -237,7 +237,7 @@ impl Store {
         let tracks: Vec<&Track> = self.tracks.values().collect();
         if let Ok(bytes) = serde_json::to_vec(&tracks) {
             if let Err(error) = std::fs::write(&self.file, bytes) {
-                eprintln!("failed to save the chains: {error}");
+                crate::journal::error(&format!("failed to save the chains: {error}"));
             }
         }
     }

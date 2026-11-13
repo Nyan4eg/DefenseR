@@ -39,7 +39,7 @@ impl Store {
     pub fn save(&self) {
         if let Ok(bytes) = serde_json::to_vec(&self.hours) {
             if let Err(error) = std::fs::write(&self.path, bytes) {
-                eprintln!("failed to save the activity log: {error}");
+                crate::journal::error(&format!("failed to save the activity log: {error}"));
             }
         }
     }

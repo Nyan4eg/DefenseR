@@ -153,15 +153,27 @@ impl Store {
         match serde_json::to_vec_pretty(&self.data) {
             Ok(bytes) => {
                 if let Err(error) = std::fs::write(&self.path, bytes) {
-                    eprintln!("failed to save incidents: {error}");
+                    crate::journal::error(&format!("failed to save incidents: {error}"));
                 }
             }
-            Err(error) => eprintln!("failed to serialise incidents: {error}"),
+            Err(error) => crate::journal::error(&format!("failed to serialise incidents: {error}")),
         }
     }
 
     pub fn autostart_baseline(&self) -> Option<&HashSet<String>> {
         self.data.autostart_baseline.as_ref()
+    }
+
+    /// Passes every baseline key through `current`, for when the form of the keys changes
+    /// between versions. Returns whether anything changed.
+    pub fn rewrite_baseline(&mut self, current: impl Fn(&str) -> String) -> bool {
+        let Some(baseline) = self.data.autostart_baseline.as_mut() else {
+            return false;
+        };
+        let rewritten: HashSet<String> = baseline.iter().map(|key| current(key)).collect();
+        let changed = rewritten != *baseline;
+        *baseline = rewritten;
+        changed
     }
 
     fn baseline_covers(&self, group: &str) -> bool {

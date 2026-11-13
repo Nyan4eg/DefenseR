@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sysinfo::Disks;
@@ -20,7 +20,12 @@ use crate::scanner::{self, ScanResult, Scanner, Verdict};
 /// Subfolders are searched this deep, which covers unpacked archives.
 const MAX_DEPTH: usize = 4;
 /// Files looked at per folder on one pass.
-const MAX_ENTRIES: usize = 20_000;
+const MAX_ENTRIES: usize = 150_000;
+/// A folder with more files than this is listed anew only once in `BIG_FOLDER_EVERY`: the
+/// temporary folder holds tens of thousands of files, and reading them all every ten seconds
+/// kept a processor core busy a tenth of the time.
+const BIG_FOLDER: usize = 2_000;
+const BIG_FOLDER_EVERY: Duration = Duration::from_secs(60);
 /// A file is left alone until it has not been written to for this long.
 const SETTLE: Duration = Duration::from_secs(3);
 const RECENT: usize = 20;
@@ -118,6 +123,8 @@ pub struct Watcher {
     data: Data,
     /// The contents of each watched folder on the previous pass.
     known: HashMap<PathBuf, HashMap<PathBuf, Stamp>>,
+    /// When each watched folder was last listed.
+    listed_at: HashMap<PathBuf, Instant>,
     /// New files that are not ready to be checked yet.
     pending: HashMap<PathBuf, Place>,
     watched: Vec<Watched>,
@@ -286,14 +293,14 @@ impl Watcher {
         if data.since == 0 {
             data.since = now;
         }
-        Self { file, fixed, data, known: HashMap::new(), pending: HashMap::new(), watched: Vec::new(), arrived: Vec::new(), settle: SETTLE, saved_at: now }
+        Self { file, fixed, data, known: HashMap::new(), listed_at: HashMap::new(), pending: HashMap::new(), watched: Vec::new(), arrived: Vec::new(), settle: SETTLE, saved_at: now }
     }
 
     fn save(&mut self, now: u64) {
         self.saved_at = now;
         if let Ok(bytes) = serde_json::to_vec_pretty(&self.data) {
             if let Err(error) = std::fs::write(&self.file, bytes) {
-                eprintln!("failed to save the new-files state: {error}");
+                crate::journal::error(&format!("failed to save the new-files state: {error}"));
             }
         }
     }
@@ -314,10 +321,14 @@ impl Watcher {
         self.known.retain(|root, _| roots.iter().any(|(other, _)| other == root));
         self.pending.retain(|path, _| roots.iter().any(|(root, _)| path.starts_with(root)));
 
-        let mut listed: HashMap<PathBuf, Stamp> = HashMap::new();
+        self.listed_at.retain(|root, _| roots.iter().any(|(other, _)| other == root));
         for (root, place) in roots {
-            let listing = list(root);
             let known = self.known.get(root);
+            let big = known.is_some_and(|known| known.len() > BIG_FOLDER);
+            if big && self.listed_at.get(root).is_some_and(|at| at.elapsed() < BIG_FOLDER_EVERY) {
+                continue;
+            }
+            let listing = list(root);
             for (path, stamp) in &listing {
                 let is_new = match known {
                     Some(known) => known.get(path) != Some(stamp),
@@ -327,8 +338,8 @@ impl Watcher {
                     self.pending.insert(path.clone(), *place);
                 }
             }
-            listed.extend(listing.iter().map(|(path, stamp)| (path.clone(), *stamp)));
             self.known.insert(root.clone(), listing);
+            self.listed_at.insert(root.clone(), Instant::now());
         }
         self.data.since = now;
         self.watched = roots.iter().map(|(root, place)| Watched { path: root.to_string_lossy().into_owned(), place: *place }).collect();
@@ -336,8 +347,11 @@ impl Watcher {
         let settled = SystemTime::now() - self.settle;
         let mut fresh = Vec::new();
         self.pending.retain(|path, place| {
-            let Some(stamp) = listed.get(path) else { return false };
-            if is_partial(path) || stamp.changed > settled {
+            // Asked of the file itself: the listing of a big folder can be a minute old.
+            let Ok(metadata) = std::fs::metadata(path) else { return false };
+            let modified = metadata.modified().unwrap_or(UNIX_EPOCH);
+            let changed = metadata.created().map_or(modified, |created| created.max(modified));
+            if is_partial(path) || changed > settled {
                 return true;
             }
             if scanner::starts_with_mz(path) || content::interesting(path) {

@@ -37,9 +37,49 @@ fn evidence(pairs: &[(&str, &str)]) -> Vec<Evidence> {
         .collect()
 }
 
-/// Identity of an autostart entry for the baseline: a changed command counts as a new entry.
+/// Replaces version numbers (`159.0.8140.0`, `1.2`) with `#`. Programs that update themselves
+/// carry the version in a folder or even in the name of their service; the same program in
+/// a newer version is not a new entry.
+pub fn versionless(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(first) = chars.next() {
+        if !first.is_ascii_digit() {
+            out.push(first);
+            continue;
+        }
+        let mut run = String::from(first);
+        while let Some(next) = chars.peek().copied().filter(|next| next.is_ascii_digit() || *next == '.') {
+            run.push(next);
+            chars.next();
+        }
+        // Dots at the end belong to what follows ("v2.exe"), not to the number.
+        let number = run.trim_end_matches('.');
+        if number.contains('.') {
+            out.push('#');
+        } else {
+            out.push_str(number);
+        }
+        out.push_str(&run[number.len()..]);
+    }
+    out
+}
+
+/// Identity of an autostart entry for the baseline: a changed command counts as a new entry,
+/// a changed version number in it does not.
 pub fn autostart_key(entry: &AutostartEntry) -> String {
-    format!("{}|{}|{}", entry.source, entry.name, entry.command)
+    format!("{}|{}|{}", entry.source, versionless(&entry.name), versionless(&entry.command))
+}
+
+/// Brings a baseline key written by an earlier version to today's form. Keys of autostart
+/// entries lose their version numbers; the other kinds are kept as they are (an address in
+/// the hosts file looks like a version, and is not one).
+pub fn current_key(key: &str) -> String {
+    if ["hosts|", "proxy|", "pac|", "extension|"].iter().any(|prefix| key.starts_with(prefix)) {
+        key.to_string()
+    } else {
+        versionless(key)
+    }
 }
 
 /// Which part of the baseline an entry belongs to; each part is taken when it is first seen.
@@ -406,6 +446,26 @@ mod tests {
             installed_at: None,
             manage_url: String::new(),
         }
+    }
+
+    #[test]
+    fn version_numbers_do_not_make_an_entry_new() {
+        assert_eq!(versionless("GoogleUpdaterService159.0.8140.0"), "GoogleUpdaterService#");
+        assert_eq!(versionless(r"C:\Apps\OneDrive\26.204.1019.0007\Launcher.exe /start"), r"C:\Apps\OneDrive\#\Launcher.exe /start");
+        assert_eq!(versionless(r"C:\Program Files\Office16\app-x64.exe -k 3"), r"C:\Program Files\Office16\app-x64.exe -k 3", "plain numbers stay");
+        assert_eq!(versionless("tool2.exe"), "tool2.exe");
+        assert_eq!(versionless("a 1.0. b"), "a #. b");
+
+        let entry = |name: &str, command: &str| AutostartEntry { name: name.to_string(), command: command.to_string(), source: "Services".to_string(), scope: "machine", flags: Vec::new(), kind: "service", label: None, trigger: None };
+        let old = entry("Updater159.0.1", r#""C:\Program Files\Updater\159.0.1\updater.exe" --service"#);
+        let new = entry("Updater160.2.0", r#""C:\Program Files\Updater\160.2.0\updater.exe" --service"#);
+        let moved = entry("Updater160.2.0", r#""C:\Users\Public\updater.exe" --service"#);
+        assert_eq!(autostart_key(&old), autostart_key(&new));
+        assert_ne!(autostart_key(&old), autostart_key(&moved), "another folder is still another entry");
+
+        // A baseline saved before this rule holds the old form of the key.
+        assert_eq!(current_key(r#"Services|Updater159.0.1|"C:\Program Files\Updater\159.0.1\updater.exe" --service"#), autostart_key(&old));
+        assert_eq!(current_key("hosts|192.168.1.20|nas"), "hosts|192.168.1.20|nas");
     }
 
     #[test]

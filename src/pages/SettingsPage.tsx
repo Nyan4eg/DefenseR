@@ -1,7 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Bell,
+  ChevronDown,
   CircleCheck,
+  FolderOpen,
+  Stethoscope,
   Clock,
   Download,
   FileSearch,
@@ -23,7 +26,7 @@ import {
 import { Chip, IconTile, Switch } from "../components/kit";
 import { applyLang, lang, tr, type Lang } from "../lib/i18n";
 import { Card, PageHeader } from "../components/ui";
-import { call, formatTime, inTauri, usePolling, type AiStatus, type AppSettings, type UpdateStatus } from "../lib/api";
+import { call, formatTime, inTauri, usePolling, type AiStatus, type AppSettings, type Diagnostics, type UpdateStatus } from "../lib/api";
 
 type Tone = "accent" | "info" | "warn" | "neutral";
 
@@ -295,6 +298,104 @@ function UpdatesCard({ settings, patch }: Shared) {
   );
 }
 
+/** The parts of a monitoring pass, as the backend names them. */
+const STAGES: Record<string, string> = {
+  processes: tr("процессы", "processes"),
+  startup: tr("автозагрузка", "startup"),
+  protection: tr("состояние Defender", "Defender status"),
+  "running-files": tr("файлы запущенных программ", "files of running programs"),
+  "startup-files": tr("файлы автозагрузки", "startup files"),
+  "extensions-hosts": tr("расширения, hosts, прокси", "extensions, hosts, proxy"),
+  "new-files": tr("новые файлы", "new files"),
+  network: tr("сеть", "network"),
+  "chains-profile": tr("цепочки и профиль", "chains and profile"),
+  rules: tr("правила", "rules"),
+};
+
+/** Whether the background checks are running, how long they take, and the program's own journal. */
+function DiagnosticsCard() {
+  const diagnostics = usePolling<Diagnostics>("get_diagnostics", 10_000);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!diagnostics) return null;
+
+  const errors = diagnostics.lines.filter((line) => line.includes(" ERROR ")).length;
+  const age = diagnostics.lastPassAt ? Math.max(0, Math.round(Date.now() / 1000 - diagnostics.lastPassAt)) : null;
+  // A pass every ten seconds: a long silence means the monitoring has stopped.
+  const stalled = diagnostics.passes > 0 && age != null && age > 180;
+  const seconds = (ms: number) => (ms / 1000).toFixed(1);
+  const state =
+    diagnostics.passes === 0
+      ? tr("Идёт первая проверка — она самая долгая", "The first check is running — it is the longest one")
+      : stalled
+        ? tr(`Проверки остановились: последняя была ${formatTime(diagnostics.lastPassAt)}`, `Checks have stopped: the last one was ${formatTime(diagnostics.lastPassAt)}`)
+        : tr(
+            `Работает: проверок с запуска — ${diagnostics.passes}, последняя заняла ${seconds(diagnostics.lastPassMs)} с`,
+            `Running: ${diagnostics.passes} checks since start, the last took ${seconds(diagnostics.lastPassMs)} s`,
+          );
+
+  return (
+    <Section
+      id="settings-diagnostics"
+      icon={Stethoscope}
+      tone={stalled ? "warn" : "accent"}
+      title={tr("Диагностика", "Diagnostics")}
+      text={state}
+      aside={
+        <button
+          onClick={() => call("show_journal").catch((e) => setError(String(e)))}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/8 px-3 py-1.5 text-sm text-white/70 hover:bg-white/12"
+        >
+          <FolderOpen size={14} />
+          {tr("Файл журнала", "Journal file")}
+        </button>
+      }
+    >
+      <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-white/6 pt-4">
+        <Chip>{tr(`Версия ${diagnostics.version}`, `Version ${diagnostics.version}`)}</Chip>
+        {diagnostics.slowestPassMs > 0 && <Chip tone={diagnostics.slowestPassMs > 30_000 ? "warn" : "neutral"}>{tr(`Самая долгая проверка: ${seconds(diagnostics.slowestPassMs)} с`, `Slowest check: ${seconds(diagnostics.slowestPassMs)} s`)}</Chip>}
+        <Chip tone={errors > 0 ? "warn" : "accent"}>{errors > 0 ? tr(`Ошибок в последних записях: ${errors}`, `Errors in recent entries: ${errors}`) : tr("Ошибок в последних записях нет", "No errors in recent entries")}</Chip>
+        <span className="flex-1" />
+        <button onClick={() => setOpen(!open)} className="flex items-center gap-1 text-xs text-white/45 hover:text-white/80">
+          {open ? tr("Скрыть журнал", "Hide the journal") : tr("Показать журнал", "Show the journal")}
+          <ChevronDown size={14} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && (
+        <div className="rise mt-3">
+          {diagnostics.stages && diagnostics.stages.length > 0 && (
+            <div className="mb-3 text-xs text-white/45">
+              {tr("На что ушла последняя проверка: ", "What the last check spent its time on: ")}
+              {[...diagnostics.stages]
+                .sort((a, b) => b.ms - a.ms)
+                .filter((stage) => stage.ms > 0)
+                .slice(0, 5)
+                .map((stage) => `${STAGES[stage.name] ?? stage.name} — ${stage.ms} ${tr("мс", "ms")}`)
+                .join(" · ") || tr("всё быстрее миллисекунды", "everything under a millisecond")}
+            </div>
+          )}
+          <div className="max-h-64 select-text overflow-auto rounded-xl bg-black/25 px-3 py-2.5 font-mono text-[11px] leading-5 text-white/60">
+            {diagnostics.lines.length === 0
+              ? tr("Журнал пуст.", "The journal is empty.")
+              : diagnostics.lines.map((line, index) => (
+                  <div key={index} className={`whitespace-pre-wrap break-all ${line.includes(" ERROR ") ? "text-amber-200" : ""}`}>
+                    {line}
+                  </div>
+                ))}
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-white/40">
+            {tr(
+              "Журнал хранится только на этом компьютере и никуда не отправляется. В нём — запуски программы, сбои и необычно долгие проверки; время указано по UTC.",
+              "The journal is kept only on this computer and is sent nowhere. It holds the program's starts, failures and unusually slow checks; times are in UTC.",
+            )}
+          </p>
+        </div>
+      )}
+      <ErrorLine error={error} />
+    </Section>
+  );
+}
+
 /** Switches the interface language; the window reloads to apply it. */
 function LanguageCard() {
   const choose = async (next: Lang) => {
@@ -530,6 +631,7 @@ export function SettingsPage({ hasKey, onChanged }: { hasKey: boolean; onChanged
         <BackgroundCard settings={settings} patch={patch} />
         <UpdatesCard settings={settings} patch={patch} />
         <LanguageCard />
+        <DiagnosticsCard />
       </div>
 
       <Heading>{tr("Приватность", "Privacy")}</Heading>

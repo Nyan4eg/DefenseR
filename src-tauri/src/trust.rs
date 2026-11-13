@@ -70,7 +70,7 @@ impl Store {
     pub fn save(&self) {
         if let Ok(bytes) = serde_json::to_vec_pretty(&self.state) {
             if let Err(error) = std::fs::write(&self.path, bytes) {
-                eprintln!("failed to save the trusted list: {error}");
+                crate::journal::error(&format!("failed to save the trusted list: {error}"));
             }
         }
     }

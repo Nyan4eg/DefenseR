@@ -6,6 +6,7 @@ mod content;
 mod downloads;
 mod icons;
 mod incidents;
+mod journal;
 mod lang;
 mod monitor;
 mod profile;
@@ -50,6 +51,28 @@ pub(crate) struct AppState {
     pub reputations: Mutex<HashMap<String, vt::Reputation>>,
     icons: icons::Icons,
     pub activity: Mutex<activity::Store>,
+    pub health: Mutex<Health>,
+}
+
+/// How the background monitoring is doing.
+#[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Health {
+    /// Passes finished since the app started.
+    pub passes: u64,
+    /// Unix seconds of the last finished pass.
+    pub last_pass_at: u64,
+    pub last_pass_ms: u64,
+    /// The longest pass, not counting the first one.
+    pub slowest_pass_ms: u64,
+    /// What the last pass spent its time on.
+    pub stages: Vec<Stage>,
+}
+
+#[derive(Serialize, Clone)]
+pub(crate) struct Stage {
+    pub name: &'static str,
+    pub ms: u64,
 }
 
 impl AppState {
@@ -159,6 +182,34 @@ fn trust_extension(state: State<'_, AppState>, browser: String, profile: String,
 #[tauri::command(async)]
 fn get_icons(state: State<'_, AppState>, paths: Vec<String>) -> HashMap<String, String> {
     state.icons.get(&paths)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Diagnostics {
+    version: String,
+    #[serde(flatten)]
+    health: Health,
+    log_path: Option<String>,
+    /// The last lines of the journal, oldest first.
+    lines: Vec<String>,
+}
+
+#[tauri::command(async)]
+fn get_diagnostics(app: AppHandle, state: State<'_, AppState>) -> Diagnostics {
+    Diagnostics {
+        version: app.package_info().version.to_string(),
+        health: lock(&state.health).clone(),
+        log_path: journal::path().map(|path| path.to_string_lossy().into_owned()),
+        lines: journal::tail(60),
+    }
+}
+
+/// Shows the journal file in Explorer.
+#[tauri::command(async)]
+fn show_journal() -> Result<(), String> {
+    let path = journal::path().ok_or(tr("Журнал ещё не создан.", "The journal has not been created yet."))?;
+    std::process::Command::new("explorer.exe").arg(format!("/select,{}", path.display())).spawn().map(|_| ()).map_err(|error| error.to_string())
 }
 
 #[tauri::command(async)]
@@ -685,6 +736,10 @@ pub fn run() {
             ai::use_identifier(&app.config().identifier);
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
+            journal::init(&data_dir);
+            journal::info(&format!("DefenseR {} started", app.package_info().version));
+            // The release build ends on a panic; this is the only trace it leaves.
+            std::panic::set_hook(Box::new(|panic| journal::error(&format!("the program stopped on an internal error: {panic}"))));
 
             let settings = shell::SettingsStore::load(data_dir.join("settings.json"));
             lang::set(&settings.settings.language.clone().unwrap_or_else(|| lang::system().to_string()));
@@ -715,6 +770,7 @@ pub fn run() {
                 reputations: Mutex::new(HashMap::new()),
                 icons: icons::Icons::default(),
                 activity: Mutex::new(activity::Store::load(data_dir.join("activity.json"))),
+                health: Mutex::new(Health::default()),
             });
 
             shell::setup_tray(app)?;
@@ -744,6 +800,8 @@ pub fn run() {
             get_processes,
             get_connections,
             get_netconfig,
+            get_diagnostics,
+            show_journal,
             get_activity,
             get_autostart,
             get_extensions,
