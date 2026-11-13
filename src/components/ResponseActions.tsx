@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Ban, CircleStop, LoaderCircle, Lock, Rocket } from "lucide-react";
 import { ConfirmDialog } from "./ui";
-import { call, type ResponseTarget } from "../lib/api";
+import { call, SERVICES_SOURCE, TASKS_SOURCE, type ResponseTarget } from "../lib/api";
 import { tr } from "../lib/i18n";
 
 export type Action = "kill" | "quarantine" | "block" | "autostart";
@@ -23,7 +23,27 @@ const DONE: Record<Action, string> = {
 };
 
 /** Text of the confirmation for turning an autostart entry off. */
-export function autostartDialog(name: string, scope: "user" | "machine" | null) {
+export function autostartDialog(name: string, scope: "user" | "machine" | null, source?: string) {
+  if (source === TASKS_SOURCE) {
+    return {
+      title: tr(`Отключить задание «${name}»?`, `Turn off the task “${name}”?`),
+      body: tr(
+        "Планировщик заданий Windows перестанет его запускать. Сама программа останется на месте, а задание можно включить обратно на странице «Автозагрузка». Если задание создано не вами, Windows попросит подтвердить действие от имени администратора.",
+        "Windows Task Scheduler will stop running it. The program itself will stay where it is, and the task can be turned back on from the Startup page. If you did not create the task yourself, Windows will ask you to confirm the action as an administrator.",
+      ),
+      confirmLabel: tr("Отключить задание", "Turn off the task"),
+    };
+  }
+  if (source === SERVICES_SOURCE) {
+    return {
+      title: tr(`Отключить службу «${name}»?`, `Turn off the service “${name}”?`),
+      body: tr(
+        "Служба перестанет запускаться вместе с компьютером; если она работает сейчас, то проработает до перезагрузки. Программа, которой нужна эта служба, может начать работать неправильно. Включить службу обратно можно на странице «Автозагрузка». Windows попросит подтвердить действие от имени администратора.",
+        "The service will no longer start with the computer; if it is running now, it keeps running until the restart. The program that needs this service may stop working properly. The service can be turned back on from the Startup page. Windows will ask you to confirm the action as an administrator.",
+      ),
+      confirmLabel: tr("Отключить службу", "Turn off the service"),
+    };
+  }
   return {
     title: tr(`Убрать «${name}» из автозагрузки?`, `Remove “${name}” from startup?`),
     body:
@@ -64,7 +84,7 @@ export function ResponseActions({ target, name, onDone, only }: Props) {
       body: tr("В брандмауэр Windows добавится правило, которое блокирует исходящие соединения этой программы. Windows попросит подтвердить действие от имени администратора. Снять блокировку можно на странице «Реакции».", "A rule that blocks this program's outgoing connections will be added to Windows Firewall. Windows will ask you to confirm the action as an administrator. You can remove the block on the Responses page."),
       confirmLabel: tr("Заблокировать", "Block"),
     },
-    autostart: autostartDialog(target.autostart?.name ?? name, target.autostart?.source.startsWith("HKCU") ? "user" : null),
+    autostart: autostartDialog(target.autostart?.name.split("\\").pop() || name, target.autostart?.source.startsWith("HKCU") ? "user" : null, target.autostart?.source),
   };
 
   const run = async (action: Action) => {
@@ -89,7 +109,7 @@ export function ResponseActions({ target, name, onDone, only }: Props) {
     { action: "kill", label: tr("Завершить процесс", "End process"), icon: CircleStop, available: target.pid !== null },
     { action: "quarantine", label: tr("В карантин", "Quarantine"), icon: Lock, available: target.path !== null },
     { action: "block", label: tr("Запретить сеть", "Block network"), icon: Ban, available: target.path !== null },
-    { action: "autostart", label: tr("Убрать из автозагрузки", "Remove from startup"), icon: Rocket, available: !!target.autostart },
+    { action: "autostart", label: target.autostart?.source === TASKS_SOURCE ? tr("Отключить задание", "Turn off the task") : target.autostart?.source === SERVICES_SOURCE ? tr("Отключить службу", "Turn off the service") : tr("Убрать из автозагрузки", "Remove from startup"), icon: Rocket, available: !!target.autostart },
   ];
 
   return (

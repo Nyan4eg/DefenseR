@@ -354,7 +354,7 @@ mod tests {
     }
 
     fn entry(command: &str) -> AutostartEntry {
-        AutostartEntry { name: "Updater".to_string(), command: command.to_string(), source: r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run".to_string(), scope: "user", flags: Vec::new() }
+        AutostartEntry { name: "Updater".to_string(), command: command.to_string(), source: r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run".to_string(), scope: "user", flags: Vec::new(), kind: "registry", label: None, trigger: None }
     }
 
     fn scanned(status: SignatureStatus, verdict: Verdict) -> impl Fn(&Path) -> Option<ScanResult> {

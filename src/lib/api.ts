@@ -42,7 +42,19 @@ export interface AutostartEntry {
   source: string;
   scope: "user" | "machine";
   flags: string[];
+  /** Where the entry lives. Absent in data from before tasks and services were listed. */
+  kind?: AutostartKind;
+  /** A name to show instead of `name`, when `name` is an identifier. */
+  label?: string | null;
+  /** For tasks and services: when it starts, in words. */
+  trigger?: string | null;
 }
+
+export type AutostartKind = "registry" | "folder" | "task" | "service";
+
+/** The `source` of scheduled tasks and of services, as the backend names them. */
+export const TASKS_SOURCE = "Task Scheduler";
+export const SERVICES_SOURCE = "Services";
 
 export interface ProtectionStatus {
   realtime: boolean | null;
@@ -119,6 +131,9 @@ export interface DisabledAutostart {
   source: string;
   scope: "user" | "machine";
   disabledAt: number;
+  /** "task" or "service" for those; empty for registry and Startup folder entries. */
+  kind?: string;
+  label?: string | null;
 }
 
 export interface ProfileStatus {

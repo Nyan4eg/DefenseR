@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager};
 
 use crate::collectors::processes::ProcessInfo;
-use crate::collectors::{autostart, network, processes};
+use crate::collectors::{autostart, network, persistence, processes};
 use crate::incidents::{Evidence, Finding, Severity, Target};
 use crate::rules::{self, Snapshot};
 use crate::scanner::signature::SignatureStatus;
@@ -163,6 +163,8 @@ pub fn run(app: AppHandle) {
     loop {
         let processes = processes::collect(&mut lock(&state.sys));
         let autostart = autostart::collect();
+        // Until the Task Scheduler has answered, tasks are unknown rather than absent.
+        let tasks_known = persistence::tasks().is_some();
         let protection = state.protection();
         // Slow on the first pass, when every running program is new to the scanner.
         let file_findings = scan_running_files(&state, &processes);
@@ -212,9 +214,8 @@ pub fn run(app: AppHandle) {
         }
 
         let mut store = lock(&state.store);
-        if store.autostart_baseline().is_none() {
-            let baseline: HashSet<String> = autostart.iter().map(rules::autostart_key).collect();
-            store.set_autostart_baseline(baseline);
+        let groups: &[&str] = if tasks_known { &["entry", "service", "task"] } else { &["entry", "service"] };
+        if store.extend_baseline(groups, |group| autostart.iter().filter(|entry| rules::baseline_group(entry) == group).map(rules::autostart_key).collect()) {
             store.save();
         }
 

@@ -1,4 +1,5 @@
 // Sample data for working on the UI in a plain browser. Never used inside the Tauri app.
+import { tr } from "./i18n";
 import { lang } from "./i18n";
 import type { AutostartEntry, Connection, Incident, ModelInfo, Overview, ProcessInfo, ProtectionStatus, ResponsesState, ScanResult, TrustState } from "./api";
 
@@ -82,6 +83,9 @@ let autostart: AutostartEntry[] = [
   { name: "Discord", command: '"C:\\Users\\demo\\AppData\\Local\\Discord\\Update.exe" --processStart Discord.exe', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: [] },
   { name: "AnyDesk.lnk", command: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\AnyDesk.lnk", source: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup", scope: "machine", flags: [] },
   { name: "OldUpdater", command: '"C:\\Program Files\\OldApp\\updater.exe"', source: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", scope: "user", flags: ["missing-file"] },
+  { name: "\\Demo\\Browser Update", label: "Browser Update", command: '"C:\\Program Files\\Demo Browser\\update.exe" /scheduled', source: "Task Scheduler", scope: "machine", flags: [], kind: "task", trigger: tr("по расписанию", "on a schedule") },
+  { name: "\\Wake Check", label: "Wake Check", command: 'powershell.exe -File "C:\\Users\\demo\\AppData\\Local\\Temp\\check.ps1"', source: "Task Scheduler", scope: "machine", flags: ["temp-path"], kind: "task", trigger: tr("при входе в Windows", "when you sign in") },
+  { name: "DemoVpnService", label: "Demo VPN Service", command: '"C:\\Program Files\\Demo VPN\\vpnservice.exe"', source: "Services", scope: "machine", flags: [], kind: "service", trigger: tr("при запуске компьютера", "when the computer starts") },
 ];
 
 const protection: ProtectionStatus = {
@@ -244,14 +248,14 @@ export function mock(command: string, args?: Record<string, unknown>): unknown {
       if (!entry) throw "Запись уже исчезла из автозагрузки.";
       autostart = autostart.filter((e) => e !== entry);
       incidents = incidents.map((i) => (i.target?.autostart?.name === entry.name ? { ...i, status: "resolved" } : i));
-      responses.autostart = [{ id: String(Date.now()), name: entry.name, command: entry.command, source: entry.source, scope: entry.scope, disabledAt: Math.floor(Date.now() / 1000) }, ...responses.autostart];
+      responses.autostart = [{ id: String(Date.now()), name: entry.name, command: entry.command, source: entry.source, scope: entry.scope, disabledAt: Math.floor(Date.now() / 1000), kind: entry.kind === "task" || entry.kind === "service" ? entry.kind : "", label: entry.label }, ...responses.autostart];
       return respond("autostart-disable", `${entry.source}\\${entry.name}`);
     }
     case "enable_autostart":
     case "forget_autostart": {
       const item = responses.autostart.find((a) => a.id === args?.id);
       responses.autostart = responses.autostart.filter((a) => a.id !== args?.id);
-      if (item && command === "enable_autostart") autostart = [...autostart, { name: item.name, command: item.command, source: item.source, scope: item.scope, flags: [] }];
+      if (item && command === "enable_autostart") autostart = [...autostart, { name: item.name, command: item.command, source: item.source, scope: item.scope, flags: [], kind: item.kind === "task" || item.kind === "service" ? item.kind : undefined, label: item.label }];
       return respond(command === "enable_autostart" ? "autostart-enable" : "autostart-forget", `${item?.source}\\${item?.name}`);
     }
     case "get_vt_status":

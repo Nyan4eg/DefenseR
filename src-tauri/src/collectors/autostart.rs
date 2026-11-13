@@ -6,7 +6,7 @@ use winreg::{RegKey, HKEY};
 
 use super::path_flags;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AutostartEntry {
     pub name: String,
@@ -16,6 +16,12 @@ pub struct AutostartEntry {
     /// "user" or "machine".
     pub scope: &'static str,
     pub flags: Vec<String>,
+    /// "registry", "folder", "task" or "service".
+    pub kind: &'static str,
+    /// A name to show instead of `name`, when `name` is an identifier.
+    pub label: Option<String>,
+    /// For tasks and services: when it starts, in words.
+    pub trigger: Option<String>,
 }
 
 pub const RUN_KEYS: [(HKEY, &str, &str, &str); 5] = [
@@ -52,7 +58,7 @@ pub fn executable_of(command: &str) -> Option<&str> {
     command.get(..end)
 }
 
-fn command_flags(command: &str) -> Vec<String> {
+pub fn command_flags(command: &str) -> Vec<String> {
     let mut flags = path_flags(command);
     if let Some(exe) = executable_of(command) {
         // Paths with unexpanded %VARIABLES% or without a drive cannot be checked reliably.
@@ -64,7 +70,16 @@ fn command_flags(command: &str) -> Vec<String> {
     flags
 }
 
+/// Everything that starts on its own: the Run keys, the Startup folders, services and
+/// scheduled tasks. Tasks are missing until the Task Scheduler has answered once.
 pub fn collect() -> Vec<AutostartEntry> {
+    let mut entries = run_entries();
+    entries.extend(super::persistence::services());
+    entries.extend(super::persistence::tasks().unwrap_or_default());
+    entries
+}
+
+fn run_entries() -> Vec<AutostartEntry> {
     let mut entries = Vec::new();
 
     for (hive, hive_name, scope, path) in RUN_KEYS {
@@ -79,6 +94,9 @@ pub fn collect() -> Vec<AutostartEntry> {
                 command,
                 source: format!(r"{hive_name}\{path}"),
                 scope,
+                kind: "registry",
+                label: None,
+                trigger: None,
             });
         }
     }
@@ -100,6 +118,9 @@ pub fn collect() -> Vec<AutostartEntry> {
                 command,
                 source: folder.to_string_lossy().into_owned(),
                 scope,
+                kind: "folder",
+                label: None,
+                trigger: None,
             });
         }
     }

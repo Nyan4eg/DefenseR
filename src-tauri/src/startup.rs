@@ -14,6 +14,7 @@ use winreg::enums::{RegType, HKEY_CURRENT_USER, KEY_SET_VALUE};
 use winreg::{RegKey, RegValue};
 
 use crate::collectors::autostart::{startup_folders, RUN_KEYS};
+use crate::collectors::persistence::{self, SERVICES, TASKS};
 use crate::lang::{tr, trs};
 use crate::responses::move_file;
 
@@ -40,6 +41,16 @@ pub struct Disabled {
     /// The registry value was of the kind that expands %VARIABLES%.
     pub expand: bool,
     pub disabled_at: u64,
+    /// "task" or "service" for those; empty for registry and Startup folder entries, which is
+    /// also what entries stored by earlier versions have.
+    #[serde(default)]
+    pub kind: String,
+    /// A name to show instead of `name`.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// The service started with a delay; it is given that back.
+    #[serde(default)]
+    pub delayed: bool,
 }
 
 fn base64(bytes: &[u8]) -> String {
@@ -88,6 +99,58 @@ fn elevated(body: &str, data: &serde_json::Value) -> Result<(), String> {
 const SET_VALUE: &str = "$k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($d.path, $true); $k.SetValue($d.name, $d.command, [Microsoft.Win32.RegistryValueKind]$d.kind); $k.Close()";
 const DELETE_VALUE: &str = "$k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($d.path, $true); $k.DeleteValue($d.name, $true); $k.Close()";
 const MOVE_FILE: &str = "[IO.File]::Move($d.from, $d.to)";
+/// Turns a task on or off and makes sure Windows did it.
+const SET_TASK: &str = "$t = Get-ScheduledTask -TaskPath $d.folder -TaskName $d.leaf; if ($d.enable) { $t | Enable-ScheduledTask | Out-Null } else { $t | Disable-ScheduledTask | Out-Null }; $off = \"$((Get-ScheduledTask -TaskPath $d.folder -TaskName $d.leaf).State)\" -eq 'Disabled'; if ($off -eq [bool]$d.enable) { throw 'unchanged' }";
+const SET_SERVICE: &str = "& sc.exe config $d.name start= $d.start | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'sc' }";
+
+/// Runs a snippet without asking for administrator rights; false when it failed.
+fn plain(body: &str, data: &serde_json::Value) -> bool {
+    Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded_script(body, data)])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+        .is_ok_and(|status| status.code() == Some(0))
+}
+
+/// Tasks a user made for themself can be changed as that user; the rest need an administrator.
+fn set_task(path: &str, enable: bool) -> Result<(), String> {
+    let split = path.rfind('\\').map_or(0, |at| at + 1);
+    let data = json!({ "folder": &path[..split], "leaf": &path[split..], "enable": enable });
+    let result = if plain(SET_TASK, &data) { Ok(()) } else { elevated(SET_TASK, &data) };
+    persistence::forget_tasks();
+    result
+}
+
+fn disable_task(mut item: Disabled) -> Result<Disabled, String> {
+    // Only tasks the collector lists: this is not a way to turn off any task in Windows.
+    let tasks = persistence::tasks().unwrap_or_default();
+    let task = tasks.iter().find(|task| task.name == item.name).ok_or(tr("Задание уже отключено или удалено.", "The task has already been turned off or removed."))?;
+    item.command = task.command.clone();
+    item.label = task.label.clone();
+    set_task(&item.name, false)?;
+    Ok(item)
+}
+
+fn disable_service(mut item: Disabled) -> Result<Disabled, String> {
+    let services = persistence::services();
+    let service = services.iter().find(|service| service.name == item.name).ok_or(tr("Служба уже отключена или удалена.", "The service has already been turned off or removed."))?;
+    item.command = service.command.clone();
+    item.label = service.label.clone();
+    item.delayed = persistence::service_start(&item.name).is_some_and(|(_, delayed)| delayed);
+    elevated(SET_SERVICE, &json!({ "name": item.name, "start": "disabled" }))?;
+    if persistence::service_start(&item.name).is_some_and(|(start, _)| start == 4) { Ok(item) } else { Err(tr("Служба осталась включённой.", "The service is still on.").to_string()) }
+}
+
+fn enable_service(item: &Disabled) -> Result<(), String> {
+    match persistence::service_start(&item.name) {
+        None => return Err(tr("Такой службы больше нет.", "This service no longer exists.").to_string()),
+        Some((2, _)) => return Ok(()),
+        Some(_) => {}
+    }
+    let start = if item.delayed { "delayed-auto" } else { "auto" };
+    elevated(SET_SERVICE, &json!({ "name": item.name, "start": start }))?;
+    if persistence::service_start(&item.name).is_some_and(|(start, _)| start == 2) { Ok(()) } else { Err(tr("Не удалось включить службу.", "The service could not be turned on.").to_string()) }
+}
 
 /// The registry key behind an entry's source. Only the keys the collector reads are accepted.
 fn run_key(source: &str) -> Option<(RegKey, bool, &'static str)> {
@@ -122,7 +185,16 @@ pub fn disable(dir: &Path, source: &str, name: &str, now: u64) -> Result<Disable
         file: false,
         expand: false,
         disabled_at: now,
+        kind: String::new(),
+        label: None,
+        delayed: false,
     };
+
+    if source == TASKS || source == SERVICES {
+        item.scope = "machine".to_string();
+        item.kind = if source == TASKS { "task" } else { "service" }.to_string();
+        return if source == TASKS { disable_task(item) } else { disable_service(item) };
+    }
 
     if let Some((hive, user, path)) = run_key(source) {
         let key = hive.open_subkey(path).map_err(|e| describe(&e))?;
@@ -174,6 +246,11 @@ pub fn disable(dir: &Path, source: &str, name: &str, now: u64) -> Result<Disable
 
 /// Puts an entry removed by `disable` back as it was.
 pub fn enable(dir: &Path, item: &Disabled) -> Result<(), String> {
+    match item.kind.as_str() {
+        "task" => return set_task(&item.name, true),
+        "service" => return enable_service(item),
+        _ => {}
+    }
     if item.file {
         let original = Path::new(&item.command);
         if original.exists() {
@@ -230,6 +307,8 @@ mod tests {
         assert!(run_key(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run").is_some());
         assert!(run_key(r"HKLM\Software\Microsoft\Windows\CurrentVersion\Policies").is_none());
         assert!(disable(Path::new("."), r"C:\Windows\System32", "cmd.exe", 0).is_err());
+        // A Windows service is not among the ones the collector lists, so it cannot be turned off here.
+        assert!(disable(Path::new("."), SERVICES, "EventLog", 0).is_err());
     }
 
     /// The script that would run elevated, run here without elevation on a file of its own:

@@ -118,6 +118,10 @@ struct StoreData {
     incidents: Vec<Incident>,
     /// Autostart entries that existed when monitoring first ran. `None` until that first pass.
     autostart_baseline: Option<HashSet<String>>,
+    /// The groups of entries ("entry", "service", "task") the baseline already covers. Empty in
+    /// stores written before services and tasks were watched: those cover "entry" only.
+    #[serde(default)]
+    baseline_groups: HashSet<String>,
 }
 
 /// What one evaluation pass changed.
@@ -160,8 +164,27 @@ impl Store {
         self.data.autostart_baseline.as_ref()
     }
 
-    pub fn set_autostart_baseline(&mut self, baseline: HashSet<String>) {
-        self.data.autostart_baseline = Some(baseline);
+    fn baseline_covers(&self, group: &str) -> bool {
+        self.data.baseline_groups.contains(group) || (group == "entry" && self.data.baseline_groups.is_empty() && self.data.autostart_baseline.is_some())
+    }
+
+    /// Takes what exists now as known, for each of `groups` seen for the first time: on the
+    /// very first pass, and when a version starts watching a new kind of entry. `keys` gives
+    /// the baseline keys of a group's current entries. Returns whether anything was added.
+    pub fn extend_baseline(&mut self, groups: &[&str], keys: impl Fn(&str) -> Vec<String>) -> bool {
+        let new: Vec<&str> = groups.iter().copied().filter(|group| !self.baseline_covers(group)).collect();
+        if new.is_empty() {
+            return false;
+        }
+        if self.data.baseline_groups.is_empty() && self.data.autostart_baseline.is_some() {
+            self.data.baseline_groups.insert("entry".to_string());
+        }
+        let baseline = self.data.autostart_baseline.get_or_insert_with(HashSet::new);
+        for group in new {
+            baseline.extend(keys(group));
+            self.data.baseline_groups.insert(group.to_string());
+        }
+        true
     }
 
     /// Active first, then by severity, then most recent.
@@ -326,5 +349,28 @@ mod tests {
 
         store.merge(vec![finding("a"), finding("b")], 110 + SETTLED_SECS);
         assert!(status(&store, "a") == Status::Active, "a finding that persists does");
+    }
+
+    /// A store written before tasks and services were watched knows only registry entries:
+    /// what is there when the new version first looks is taken as known, not reported as new.
+    #[test]
+    fn baseline_grows_when_a_new_kind_is_first_seen() {
+        let old = r#"{ "incidents": [], "autostartBaseline": ["run|a"] }"#;
+        let data: StoreData = serde_json::from_str(old).unwrap();
+        let mut store = Store { path: PathBuf::from("unused"), data, settled: Vec::new() };
+        let keys = |group: &str| vec![format!("{group}|now")];
+
+        assert!(store.extend_baseline(&["entry", "service"], keys), "services are new to this store");
+        let baseline = store.autostart_baseline().unwrap();
+        assert!(baseline.contains("run|a") && baseline.contains("service|now"));
+        assert!(!baseline.contains("entry|now"), "entries were already covered: a new one stays new");
+
+        assert!(!store.extend_baseline(&["entry", "service"], keys));
+        assert!(store.extend_baseline(&["entry", "service", "task"], keys), "tasks arrive once the scheduler answers");
+        assert!(store.autostart_baseline().unwrap().contains("task|now"));
+
+        let mut fresh = Store { path: PathBuf::from("unused"), data: StoreData::default(), settled: Vec::new() };
+        assert!(fresh.extend_baseline(&["entry", "service"], keys));
+        assert!(fresh.autostart_baseline().unwrap().contains("entry|now"));
     }
 }

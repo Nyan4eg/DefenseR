@@ -40,6 +40,15 @@ pub fn autostart_key(entry: &AutostartEntry) -> String {
     format!("{}|{}|{}", entry.source, entry.name, entry.command)
 }
 
+/// Which part of the baseline an entry belongs to; each part is taken when it is first seen.
+pub fn baseline_group(entry: &AutostartEntry) -> &'static str {
+    match entry.kind {
+        "task" => "task",
+        "service" => "service",
+        _ => "entry",
+    }
+}
+
 /// `baseline` is the set of autostart entries known from the first run; `None` skips the
 /// "new entry" rule.
 pub fn evaluate(snapshot: &Snapshot, baseline: Option<&HashSet<String>>) -> Vec<Finding> {
@@ -131,24 +140,31 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
     let own_exe = std::env::current_exe().ok().map(|exe| exe.to_string_lossy().to_lowercase());
     for entry in entries {
         let subject = format!("{}|{}", entry.source.to_lowercase(), entry.name.to_lowercase());
-        let details = evidence(&[
+        let shown = entry.label.as_deref().unwrap_or(&entry.name);
+        // What the entry is called in a title, and where it lives.
+        let (noun, new_noun, place) = match entry.kind {
+            "task" => (tr("Задание планировщика", "Scheduled task"), tr("Новое задание планировщика", "New scheduled task"), tr("Планировщик заданий Windows", "Windows Task Scheduler")),
+            "service" => (tr("Служба", "Service"), tr("Новая служба", "New service"), tr("Службы Windows", "Windows services")),
+            _ => (tr("Автозагрузка", "Startup entry"), tr("Новая запись автозагрузки", "New startup entry"), entry.source.as_str()),
+        };
+        let mut details = evidence(&[
             (tr("Запись", "Entry"), &entry.name),
             (tr("Команда", "Command"), &entry.command),
-            (tr("Источник", "Source"), &entry.source),
+            (tr("Источник", "Source"), place),
         ]);
+        if let Some(trigger) = &entry.trigger {
+            details.push(Evidence { label: tr("Запускается", "Starts").to_string(), value: trigger.clone() });
+        }
 
         if entry.flags.iter().any(|f| f == "temp-path") {
             findings.push(Finding {
                 id: format!("autostart-temp-path|{subject}"),
                 rule: "autostart-temp-path",
                 severity: Severity::High,
-                title: trs(
-                    format!("Автозагрузка «{}» запускает файл из временной папки", entry.name),
-                    format!("Startup entry “{}” runs a file from the temp folder", entry.name),
-                ),
+                title: trs(format!("{noun} «{shown}» запускает файл из временной папки"), format!("{noun} “{shown}” runs a file from the temp folder")),
                 summary: tr(
-                    "Запись автозагрузки ссылается на временную папку. Обычные программы так не устанавливаются; это типичный способ закрепления вредоносных программ.",
-                    "The startup entry points to the temp folder. Ordinary programs are not installed this way; it is a typical way for malware to stay on a computer.",
+                    "Запись ссылается на временную папку и запускается сама. Обычные программы так не устанавливаются; это типичный способ закрепления вредоносных программ.",
+                    "The entry points to the temp folder and starts on its own. Ordinary programs are not installed this way; it is a typical way for malware to stay on a computer.",
                 )
                 .to_string(),
                 evidence: details.clone(),
@@ -162,13 +178,10 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 id: format!("autostart-missing-file|{subject}"),
                 rule: "autostart-missing-file",
                 severity: Severity::Low,
-                title: trs(
-                    format!("Автозагрузка «{}» ссылается на несуществующий файл", entry.name),
-                    format!("Startup entry “{}” points to a file that does not exist", entry.name),
-                ),
+                title: trs(format!("{noun} «{shown}» ссылается на несуществующий файл"), format!("{noun} “{shown}” points to a file that does not exist")),
                 summary: tr(
-                    "Файл из записи автозагрузки не найден. Чаще всего это остаток удалённой программы.",
-                    "The file named in the startup entry was not found. Most often this is a leftover of a program that was removed.",
+                    "Файл, который должна запускать эта запись, не найден. Чаще всего это остаток удалённой программы.",
+                    "The file this entry is meant to start was not found. Most often this is a leftover of a program that was removed.",
                 )
                 .to_string(),
                 evidence: details.clone(),
@@ -184,10 +197,10 @@ fn autostart_rules(entries: &[AutostartEntry], baseline: Option<&HashSet<String>
                 id: format!("autostart-new|{}", autostart_key(entry).to_lowercase()),
                 rule: "autostart-new",
                 severity: Severity::Medium,
-                title: trs(format!("Новая запись автозагрузки «{}»", entry.name), format!("New startup entry “{}”", entry.name)),
+                title: trs(format!("{new_noun} «{shown}»"), format!("{new_noun} “{shown}”")),
                 summary: tr(
-                    "Этой записи не было при первом запуске DefenseR, либо её команда изменилась. Новые программы добавляют себя в автозагрузку при установке; так же закрепляются и вредоносные.",
-                    "This entry was not there when DefenseR first ran, or its command has changed. New programs add themselves to startup when they are installed; malware stays on a computer the same way.",
+                    "Этой записи не было, когда DefenseR впервые её проверял, либо её команда изменилась. Новые программы при установке настраивают себе запуск; так же закрепляются и вредоносные.",
+                    "This entry was not there when DefenseR first checked, or its command has changed. New programs set themselves up to start when they are installed; malware stays on a computer the same way.",
                 )
                 .to_string(),
                 evidence: details,
