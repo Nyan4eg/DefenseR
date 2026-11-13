@@ -106,13 +106,15 @@ interface StatTileProps {
   suffix?: string;
   hint?: string;
   tone?: Tone;
-  /** Makes the tile a filter button; `active` marks the chosen one. */
+  /** 0 to 1: draws a bar under the number, for values that are a share of something. */
+  meter?: number;
+  /** Makes the tile a button (a filter, or a way to another page); `active` marks the chosen one. */
   onClick?: () => void;
   active?: boolean;
 }
 
 /** A number with a label. As a button it filters the list below it. */
-export function StatTile({ icon: Icon, label, value, suffix, hint, tone = "neutral", onClick, active }: StatTileProps) {
+export function StatTile({ icon: Icon, label, value, suffix, hint, tone = "neutral", meter, onClick, active }: StatTileProps) {
   const shown = useCountUp(value);
   const colours = TONES[tone];
   const Element = onClick ? "button" : "div";
@@ -132,8 +134,21 @@ export function StatTile({ icon: Icon, label, value, suffix, hint, tone = "neutr
         <span className="text-2xl font-semibold tabular-nums tracking-tight">{shown}</span>
         {suffix && <span className="text-sm text-white/45">{suffix}</span>}
       </div>
+      {meter != null && <Meter value={meter} tone={tone} className="mb-1.5 mt-1.5" />}
       {hint && <div className="mt-0.5 truncate text-xs text-white/35">{hint}</div>}
     </Element>
+  );
+}
+
+/** An icon on a softly glowing tile: the head of a card or of a row. */
+export function IconTile({ icon: Icon, tone = "accent", size = 36 }: { icon: LucideIcon; tone?: Tone; size?: number }) {
+  return (
+    <div className="relative flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      <div className={`absolute inset-0 rounded-full bg-gradient-to-br ${TONES[tone].glow} to-transparent blur-md`} />
+      <div className="relative flex size-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]">
+        <Icon size={Math.round(size * 0.47)} className={TONES[tone].text} />
+      </div>
+    </div>
   );
 }
 

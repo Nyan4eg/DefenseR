@@ -168,7 +168,7 @@ export default function App() {
             className="h-full overflow-auto p-7"
           >
             {page === "overview" && (
-              <OverviewPage overview={overview} processes={processes} connections={connections} assessment={assessment} history={history} />
+              <OverviewPage overview={overview} processes={processes} connections={connections} incidents={incidents} assessment={assessment} history={history} onNavigate={setPage} />
             )}
             {page === "incidents" && (
               <IncidentsPage incidents={incidents} profile={profile} hasKey={hasKey} onChanged={refresh} onOpenSettings={() => setPage("settings")} />
