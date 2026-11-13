@@ -9,7 +9,7 @@ DefenseR does not replace an antivirus and has no kernel driver. It is a persona
 ## What it does
 
 - **Overview and incidents.** Rules notice disabled protection, programs running from temp folders, new startup entries and other suspicious things.
-- **File scan.** A local model (LightGBM, trained on EMBER 2018) rates programs by their structure without running them, and checks the digital signature. New programs in Downloads, on the desktop, in the temp folder and on removable drives are checked on their own. A file can also be looked up on VirusTotal (only its SHA-256 is sent).
+- **File scan.** A local model (LightGBM, trained on EMBER 2018) rates programs by their structure without running them, and checks the digital signature. New programs in Downloads, on the desktop, in the temp folder and on removable drives are checked on their own. Scripts and shortcuts are read for dangerous commands, ZIP archives are looked into without unpacking, and names like `invoice.pdf.exe` are flagged. A file can also be looked up on VirusTotal (only its SHA-256 is sent).
 - **Chains of events.** When a recently arrived unsigned file was run, added itself to startup and went online, that is shown as one story with a timeline instead of separate alerts.
 - **Behaviour profile.** DefenseR learns which programs normally go online and reports new ones.
 - **Responses.** End a process, quarantine a file, block a program's network access, turn a startup entry off. Everything is reversible and happens only on your command.

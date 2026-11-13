@@ -1,6 +1,7 @@
 mod ai;
 mod chains;
 mod collectors;
+mod content;
 mod downloads;
 mod incidents;
 mod lang;
@@ -539,6 +540,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            ai::use_identifier(&app.config().identifier);
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
 

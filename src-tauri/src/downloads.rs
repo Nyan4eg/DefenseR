@@ -10,6 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sysinfo::Disks;
 
+use crate::content::{self, Report};
 use crate::incidents::{Evidence, Finding, Severity, Target};
 use crate::lang::{tr, trs};
 use crate::lock;
@@ -256,6 +257,26 @@ fn finding(result: &ScanResult, place: Place) -> Option<Finding> {
     })
 }
 
+/// The incident for something found by reading a file rather than by the model.
+fn content_finding(result: &ScanResult, report: &Report) -> Finding {
+    let mut evidence = vec![(tr("Файл", "File"), result.name.clone()), (tr("Путь", "Path"), result.path.clone())];
+    evidence.push((tr("Что найдено", "What was found"), report.signs.join("; ")));
+    if let Some(host) = source_host(Path::new(&result.path)) {
+        evidence.push((tr("Скачан с", "Downloaded from"), host));
+    }
+    evidence.push(("SHA-256", result.sha256.clone().unwrap_or_default()));
+    Finding {
+        id: format!("{}|{}", report.rule, result.path.to_lowercase()),
+        rule: report.rule,
+        severity: report.severity,
+        title: report.title.clone(),
+        summary: report.summary.clone(),
+        evidence: evidence.into_iter().map(|(label, value)| Evidence { label: label.to_string(), value }).collect(),
+        target: Target::file(&result.path),
+        timeline: Vec::new(),
+    }
+}
+
 impl Watcher {
     /// `fixed` are the folders that are always watched. On the very first run only files that
     /// appear from now on are checked; later runs also catch up on what arrived while the app
@@ -319,7 +340,7 @@ impl Watcher {
             if is_partial(path) || stamp.changed > settled {
                 return true;
             }
-            if scanner::starts_with_mz(path) {
+            if scanner::starts_with_mz(path) || content::interesting(path) {
                 fresh.push((path.clone(), *place));
             }
             false
@@ -332,12 +353,25 @@ impl Watcher {
         roots.iter().chain(&self.fixed).find(|(root, _)| path.starts_with(root)).map_or(Place::Downloads, |(_, place)| *place)
     }
 
-    fn record(&mut self, fresh: &[(PathBuf, Place)], roots: &[(PathBuf, Place)], results: Vec<ScanResult>, now: u64) -> Vec<Finding> {
+    /// `reports` is what was found in each file by reading it (scripts, shortcuts, archives,
+    /// deceptive names), next to the model's results for programs.
+    fn record(&mut self, fresh: &[(PathBuf, Place)], roots: &[(PathBuf, Place)], results: Vec<ScanResult>, reports: &HashMap<PathBuf, Vec<Report>>, now: u64) -> Vec<Finding> {
         let mut findings = Vec::new();
         let mut flagged = Vec::new();
-        for result in results {
-            let path = Path::new(&result.path);
+        for mut result in results {
+            let path = PathBuf::from(&result.path);
+            let path = path.as_path();
+            let found = reports.get(path).map(Vec::as_slice).unwrap_or_default();
             let new = fresh.iter().find(|(other, _)| other.as_path() == path).map(|(_, place)| *place);
+            // For the list in the interface a file the model does not rate gets the verdict
+            // its contents earned.
+            if result.score.is_none() && result.sha256.is_some() {
+                result.verdict = match found.iter().map(|report| report.severity).max() {
+                    Some(Severity::High) => Verdict::Malicious,
+                    Some(_) => Verdict::Suspicious,
+                    None => Verdict::Clean,
+                };
+            }
             if let Some(place) = new {
                 self.data.recent.retain(|checked| checked.path != result.path);
                 self.data.recent.insert(
@@ -352,12 +386,19 @@ impl Watcher {
                     },
                 );
                 self.data.checked += 1;
-                self.arrived.push(Arrival { path: result.path.clone(), place, at: now });
+                // Chains follow programs; a script runs inside its interpreter and cannot be followed.
+                if result.score.is_some() {
+                    self.arrived.push(Arrival { path: result.path.clone(), place, at: now });
+                }
             }
             let place = new.unwrap_or_else(|| self.place_of(path, roots));
-            if let Some(finding) = finding(&result, place) {
+            let before = findings.len();
+            if result.score.is_some() {
+                findings.extend(finding(&result, place));
+            }
+            findings.extend(found.iter().map(|report| content_finding(&result, report)));
+            if findings.len() > before {
                 flagged.push(result.path);
-                findings.push(finding);
             }
         }
         self.data.recent.truncate(RECENT);
@@ -397,7 +438,20 @@ pub fn check(watcher: &Mutex<Watcher>, scanner: &Scanner, now: u64, enabled: imp
     files.sort();
     files.dedup();
     let results = scanner.scan_all(&files, |_| {});
-    lock(watcher).record(&fresh, &roots, results, now)
+
+    // Reading scripts and unpacking archives happens here, with nothing locked.
+    let place_of = |path: &Path| {
+        let new = fresh.iter().find(|(other, _)| other == path).map(|(_, place)| *place);
+        new.or_else(|| roots.iter().find(|(root, _)| path.starts_with(root)).map(|(_, place)| *place)).unwrap_or_default()
+    };
+    let score = |bytes: &[u8]| scanner.verdict_of(bytes);
+    let reports: HashMap<PathBuf, Vec<Report>> = files
+        .iter()
+        .filter(|path| content::interesting(path))
+        .map(|path| (path.clone(), content::inspect(path, place_of(path), &score)))
+        .filter(|(_, reports)| !reports.is_empty())
+        .collect();
+    lock(watcher).record(&fresh, &roots, results, &reports, now)
 }
 
 #[cfg(test)]

@@ -110,6 +110,22 @@ impl Scanner {
         result
     }
 
+    /// The model's verdict on a program held in memory, such as one inside an archive.
+    /// `None` when the bytes are not a Windows program or the model is unavailable.
+    pub fn verdict_of(&self, bytes: &[u8]) -> Option<Verdict> {
+        let extracted = features::extract(bytes);
+        extracted.pe.as_ref()?;
+        let model = self.model.as_ref().ok()?;
+        let score = model.score(extracted.vector).ok()?;
+        Some(if score >= model.info.malicious_threshold {
+            Verdict::Malicious
+        } else if score >= model.info.suspicious_threshold {
+            Verdict::Suspicious
+        } else {
+            Verdict::Clean
+        })
+    }
+
     fn analyze(&self, path: &Path, result: &mut ScanResult) -> Result<Verdict, String> {
         if result.size > MAX_FILE_SIZE {
             return Err(tr("Файл больше 256 МБ, проверка пропущена.", "The file is larger than 256 MB, so the check was skipped.").to_string());

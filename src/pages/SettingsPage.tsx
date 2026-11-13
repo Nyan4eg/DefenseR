@@ -94,7 +94,7 @@ const FILE_OPTIONS: { key: FileOption; title: string; description: string }[] = 
   {
     key: "watchDownloads",
     title: tr("«Загрузки» и рабочий стол", "Downloads and the desktop"),
-    description: tr("Программы, которые появляются в этих папках, сразу оцениваются моделью и проверяются на подпись. Архивы не распаковываются.", "Programs that appear in these folders are scored by the model and checked for a signature straight away. Archives are not unpacked."),
+    description: tr("Программы, которые появляются в этих папках, сразу оцениваются моделью и проверяются на подпись. Скрипты и ярлыки читаются на опасные команды, а в архивы ZIP DefenseR заглядывает, не распаковывая их на диск.", "Programs that appear in these folders are scored by the model and checked for a signature straight away. Scripts and shortcuts are read for dangerous commands, and DefenseR looks into ZIP archives without unpacking them to disk."),
   },
   {
     key: "watchTemp",
